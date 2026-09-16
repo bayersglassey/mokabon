@@ -1,8 +1,8 @@
 
 [X] Load tilesets
 [X] Write text to screen with a tileset-based font
-[ ] Figure out maps
-    [ ] It's definitely gotta be a built-in editor.
+[X] Figure out maps (this TODO item is just for the design)
+    [X] It's definitely gotta be a built-in editor.
         How do we choose a file?.. looks like QB64 doesn't let us list
         files in a directory, boooo.
         So do we just... save everything in a single giant file?..
@@ -31,13 +31,23 @@
         And our QB program doesn't need a "map" type, it can just have
         a single active map at any given time, which uses various SHARED
         arrays supporting REDIM.
-    [ ] How will scrolling work?..
+    [X] How will scrolling work?..
         Let's keep it simple... render the entire map onto an image, and
         then blit the image to the screen each frame.
         Then sprites on top of that.
         EASY PEASY.
         And then... menus can be totally separate, just blit them on
         top of the map!
+[X] Implement maps
+    [X] Besides 8x8 "small" tiles, we also need 16x16 "medium" tiles
+        formed from 4 small tiles.
+        Collision detection, character locations, etc all take place on
+        medium tiles.
+        Let's call them... colltiles?.. maptiles?..
+        So like, we already have a type called Tileset, and its tiles
+        are the small ones.
+        So now, the elements of Maptiles should presumably be of type
+        Maptile.
 [ ] Implement tileset-based menus
     [ ] Scripts displaying text with a "next" button, like a character
         is talking to you

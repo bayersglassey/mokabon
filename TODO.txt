@@ -1,0 +1,69 @@
+
+[X] Load tilesets
+[X] Write text to screen with a tileset-based font
+[ ] Figure out maps
+    [ ] It's definitely gotta be a built-in editor.
+        How do we choose a file?.. looks like QB64 doesn't let us list
+        files in a directory, boooo.
+        So do we just... save everything in a single giant file?..
+        And let it grow forever?..
+        Can we give inputs to our program, or use env vars or whatever?..
+        Kind of no. :P
+        Looks like INPUT LINE works even within a fancy 32-bit window.
+        So we could do a cheap-o input thing.
+        Probably it's easier to just have a CONST we edit directly, tho!
+        YES, THAT IS THE WAY.
+        So anyway... is each map a file, or do all maps live in a single
+        file?..
+        Seems to me like one map per file is easiest.
+        We could have an overmap, orrr it's probably way easier for each
+        map to just specify which maps are to the north/south/east/west
+        of it.
+        And doors!.. we'll need those at some point...
+        Well anyway. So what's the file format?
+        One value per line, presumably.
+        Width, height, tileset, then all the tile numbers.
+        Number of characters, then the characters.
+        Number of grass patches, then the patches.
+        Number of triggers (places on map you can interact with), then
+        the triggers.
+        Etc.
+        And our QB program doesn't need a "map" type, it can just have
+        a single active map at any given time, which uses various SHARED
+        arrays supporting REDIM.
+    [ ] How will scrolling work?..
+        Let's keep it simple... render the entire map onto an image, and
+        then blit the image to the screen each frame.
+        Then sprites on top of that.
+        EASY PEASY.
+        And then... menus can be totally separate, just blit them on
+        top of the map!
+[ ] Implement tileset-based menus
+    [ ] Scripts displaying text with a "next" button, like a character
+        is talking to you
+        [ ] Various effects, like a shop, a battle, healing your pokemon,
+            etc!.. and then both characters and "triggers" on the map
+            can use the same script system.
+    [ ] Menus where you select from one of a number of options, like
+        the list of items, your pokemon, etc
+[ ] Implement characters
+    [ ] Some of them should be shop owners, so you can buy items...
+    [ ] Some of them should heal your pokemon...
+[ ] Implement triggers (places on the map you can interact with)...
+    Some of them you just step on, some of them you press "A" on, etc.
+[ ] Implement doors...
+    (Maybe these are just triggers, which use a "change map" action)
+[ ] Implement pokemon battles
+    [ ] First of all, you need your own pokemon...
+    [ ] Patches of tall grass should have pokemon...
+        [ ] Need items to work, so we can throw poke balls...
+    [ ] Some characters need to have their pokemon...
+        [ ] Optional "line of sight" where they walk forward and
+            challenge you...
+    [ ] Where do we heal?! Maybe just have some characters/items
+        which fully heal your pokemon.
+        So like, leave a poke-centre employee/machine around for you
+        to interact with.
+    [ ] Need to have a list of pokemon types somewhere, with their
+        images, and then a way to render the battle screen.
+        To begin with, can just be a simple text-based menu.

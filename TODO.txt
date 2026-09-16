@@ -48,6 +48,23 @@
         are the small ones.
         So now, the elements of Maptiles should presumably be of type
         Maptile.
+[ ] Implement map editor
+    [ ] Map tile selector: show current map's tiles, arrow keys to
+        move around, press number keys 0-9 to assign tiles to them.
+        Press "T" to enter/exit the tile selector.
+    [ ] Map editor: arrow keys move the map around (using PlayerX, PlayerY),
+        press number keys 0-9 to place tiles.
+    [ ] Set map filename (with "F")
+    [ ] Set map size (with... "Z"?)
+    [ ] Scroll the map with wrapping ("X"?..)
+    [ ] Save map, load map (with "S", "L")
+    [ ] Exit back to "player mode" where you walk around (press "M"?)
+    [ ] Map editor and tile selector should have their own help texts ("H")
+[ ] Implement player
+    [ ] Walk around
+    [ ] Jump over fences
+    [ ] Switch to map editor mode (press "M"?)
+    [ ] Remember to update the help text ("H")!..
 [ ] Implement tileset-based menus
     [ ] Scripts displaying text with a "next" button, like a character
         is talking to you

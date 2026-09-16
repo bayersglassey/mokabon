@@ -88,15 +88,24 @@ WriteTileset = FontTileset
 ' #################################################################
 ' # DECLARATIONS RELATED TO THE MAP
 
+' Used by subroutines Parse, NextToken
+Dim Shared ParseText As String
+Dim Shared Token As String
+
+' The image on which we draw the map
+Dim Shared MapImage As _Unsigned Long
+
 ' Set up the map tilesets, which all use the same image, but whose tiles
 ' come from different offsets within that image.
+' NOTE: the bounds 0 to 18 are just the map numbers given in
+' "img/tilesets.png", we didn't invent them
 Dim Shared MapTilesets(0 To 18) As Tileset
 MapTilesets(0).Image = TilesetsImage
 MapTilesets(0).TileWidth = 8
 MapTilesets(0).TileHeight = 8
 MapTilesets(0).AddX = 8
 MapTilesets(0).AddY = 8
-MapTilesets(0).StartX = 3
+MapTilesets(0).StartX = 2
 MapTilesets(0).StartY = 176
 InitializeMapTileset 1, 234
 InitializeMapTileset 2, 292
@@ -117,21 +126,34 @@ InitializeMapTileset 16, 1104
 InitializeMapTileset 17, 1162
 InitializeMapTileset 18, 1220
 
+Dim MapFilename As String
+
 ' The current tileset, a copy of one of the elements of MapTilesets
 Dim Shared MapTileset As Tileset
-MapTileset = MapTilesets(0)
 
 Type MapTile
     ' (X, Y) coordinates into the tileset, that is, into MapTileset
-    XY As XYPair
+    X As Long
+    Y As Long
 End Type
+
+Const MapTileWidth = 8
+Const MapTileHeight = 8
 
 Dim Shared MapWidth As Long
 Dim Shared MapHeight As Long
-ReDim Shared MapTiles(MapWidth, MapHeight) As MapTile
+ReDim Shared MapTiles(0, 0) As MapTile
+
+Dim Shared MapScrollX As Long
+Dim Shared MapScrollY As Long
+
+Dim Shared MapZoom As Long
+MapZoom = 2
+
+LoadMap "maps/test0.txt"
 
 
-' #################################################################
+' ########################################################################
 ' # THAT'S THE END OF ALL THE DECLARATIONS!
 ' # NOW WE ACTUALLY CREATE A WINDOW AND START THE GAME!
 
@@ -143,27 +165,33 @@ Screen _NewImage(640, 480, 32)
 _Title "Gameboy"
 _ScreenMove _Middle
 
-WriteText "Hello world!"
-
 ' Enter the main loop!..
 Do
+    Cls 0 ' Clear the screen
+    RenderMap
+    WriteAt 0, 0
+    WriteText "Hello world!"
+
+    ' While the H key is being held down, show the "help" message
+    If _KeyDown(Asc("h")) Then
+        _Dest 0
+        Locate 2, 2
+        Print "Keyboard controls:"
+        Print " H: show this help"
+        Print " Escape: quit the program"
+    End If
+
+    _Display ' Show whatever we've drawn on the screen
+
     ' Make sure the animation doesn't go faster than our intended
     ' frames-per-second (FPS)
     _Limit FPS
-
-    'RenderMap
-
-    If _KeyDown(Asc("h")) Then
-        Locate 2, 2
-        Print "HELP!"
-        Do: _Limit FPS: Loop While _KeyDown(Asc("h"))
-    End If
 Loop Until _KeyDown(27) ' Quit if escape key is pressed
 
 System ' Close the program without saying "Press any key..."
 
 
-' ######################################################################################
+' ########################################################################
 ' # FUNCTION AND SUBROUTINE DEFINITIONS
 
 Sub SetTilesetClearColor(T As Tileset)
@@ -194,34 +222,143 @@ Sub WriteAt(X As Long, Y As Long)
     WriteY = Y
 End Sub
 
-Sub WriteText(Text As String)
-    Dim I As Integer
-    Dim Ch As Integer
-    Dim Entry As XYPair
+Sub RenderTile( _
+    Tileset As Tileset, TileX As Long, TileY As Long, _
+    X As Long, Y As Long, ExtraX As Long, ExtraY As Long _
+)
+    ' NOTE: this subroutine expects _Dest to already be set!..
+
+    ' Tile width and height
+    Dim TileW As Long
+    Dim TileH As Long
+    TileW = Tileset.TileWidth
+    TileH = Tileset.TileHeight
 
     ' Source and destination (X, Y) coordinates
     Dim SrcX As Long
     Dim SrcY As Long
     Dim DstX As Long
     Dim DstY As Long
-    Dim TileW As Long
-    Dim TileH As Long
 
-    ' Set up some variables...
-    _Source WriteTileset.Image
-    TileW = WriteTileset.TileWidth
-    TileH = WriteTileset.TileHeight
+    SrcX = Tileset.StartX + TileX * Tileset.AddX
+    SrcY = Tileset.StartY + TileY * Tileset.AddY
+    DstX = X * TileW + ExtraX
+    DstY = Y * TileH + ExtraY
+    _PutImage _
+        (DstX, DstY)-(DstX + TileW - 1, DstY + TileH - 1), _
+        Tileset.Image, _Dest, _
+        (SrcX, SrcY)-(SrcX + TileW - 1, SrcY + TileH - 1)
+End Sub
+
+Sub WriteText(Text As String)
+    Dim I As Integer
+    Dim Ch As Integer
+    Dim Entry As XYPair
+
+    _Dest 0 ' Write to the screen
 
     ' Now loop over the characters in the text, and draw each character on
     ' the screen, using the tiles in WriteTileset
     For I = 1 To Len(Text)
         Ch = Asc(Mid$(Text, I, 1)) ' Get the next character from Text
         Entry = CharacterMapEntries(WriteTileset.CharacterMap, Ch)
-        SrcX = WriteTileset.StartX + Entry.X * WriteTileset.AddX
-        SrcY = WriteTileset.StartY + Entry.Y * WriteTileset.AddY
-        DstX = WriteX * TileW
-        DstY = WriteY * TileH
-        _PutImage (DstX, DstY)-(DstX + TileW, DstY + TileH), _Source, 0, (SrcX, SrcY)-(SrcX + TileW, SrcY + TileH)
+        RenderTile WriteTileset, Entry.X, Entry.Y, WriteX, WriteY, 0, 0
         WriteX = WriteX + 1
     Next
+End Sub
+
+Sub Die(Message As String)
+    Print Message
+    End
+End Sub
+
+Sub Parse(Text As String)
+    ParseText = Text
+End Sub
+
+Sub NextToken
+    Dim I As Long
+    I = Instr(ParseText, " ")
+    If I > 0 Then
+        Token = Left$(ParseText, I)
+        ParseText = Mid$(ParseText, I + 1)
+    Else
+        Token = ParseText
+        ParseText = ""
+    End If
+    'Print "Parsed token: [" + Token + "]"
+End Sub
+
+Sub LoadMap(Filename As String)
+    Dim File As Long
+    Dim Text As String
+    Dim X As Long
+    Dim Y As Long
+    Dim I As Long
+
+    File = FreeFile
+    Open Filename For Input As File
+    Do Until Eof(File)
+        Line Input #File, Text
+        If Left$(Text, 7) = "tileset" Then
+            Parse Text
+            NextToken
+            NextToken
+            MapTileset = MapTilesets(Val(Token))
+        ElseIf Left$(Text, 5) = "tiles" Then
+            Parse Text
+            NextToken
+            NextToken
+            MapWidth = Val(Token)
+            NextToken
+            MapHeight = Val(Token)
+            ReDim MapTiles(0 To MapWidth - 1, 0 To MapHeight - 1) As MapTile
+            If MapImage > 0 Then _FreeImage MapImage
+            MapImage = _NewImage(MapWidth * MapTileWidth, _
+                MapHeight * MapTileHeight, 32)
+            For Y = 0 To MapHeight - 1
+                Line Input #File, Text
+                Parse Text
+                For X = 0 To MapWidth - 1
+                    NextToken
+                    I = VAL("&H" + Token)
+                    MapTiles(X, Y).X = I Mod 16
+                    MapTiles(X, Y).Y = Int(I / 16)
+                Next
+            Next
+        ElseIf Text = "" Then
+            ' Empty line, ignore it!
+        Else
+            Die "Don't know what to do with line: " + Text
+        End If
+    Loop
+    Close File
+
+    RenderMapImage
+End Sub
+
+Sub RenderMapTile(X As Long, Y As Long)
+    _Dest MapImage
+    RenderTile MapTileset, MapTiles(X, Y).X, MapTiles(X, Y).Y, X, Y, 0, 0
+End Sub
+
+Sub RenderMapImage
+    ' Render the map's tiles onto the map's image
+    Dim X As Long
+    Dim Y As Long
+    For Y = 0 To MapHeight - 1
+        For X = 0 To MapWidth - 1
+            RenderMapTile X, Y
+        Next
+    Next
+End Sub
+
+Sub RenderMap
+    ' Copy the map onto the screen, taking into account scrolling and zooming
+    _PutImage _
+        (MapScrollX * MapZoom, MapScrollY * MapZoom) - ( _
+            (MapScrollX + MapWidth * MapTileWidth) * MapZoom - 1, _
+            (MapScrollY + MapHeight * MapTileHeight) * MapZoom - 1 _
+        ), _
+        MapImage, 0
 End Sub

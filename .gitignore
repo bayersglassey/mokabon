@@ -1,2 +1,6 @@
 *.swp
 /gameboy
+
+# Scratch stuff for QB64 testing, etc
+/untitled.bas
+/untitled

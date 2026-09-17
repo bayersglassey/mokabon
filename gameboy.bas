@@ -870,8 +870,8 @@ Sub RenderMap
     ' game boy's screen
     Dim MapScrollX As Long
     Dim MapScrollY As Long
-    MapScrollX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
-    MapScrollY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
+    MapScrollX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    MapScrollY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
 
     _PutImage _
         (MapScrollX, MapScrollY) - ( _
@@ -998,8 +998,8 @@ Sub RenderCharacter(I As Long)
 
     ' The location in pixels of the top-left corner of the map on the
     ' game boy's screen
-    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
-    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
+    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
 
     If Characters(I).State = STATE_JUMPING Then
         ' When a character is jumping, we need to render their shadow

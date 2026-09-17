@@ -61,10 +61,10 @@
     [X] Exit back to "player mode" where you walk around (press "M"?)
     [X] Map editor and tile selector should have their own help texts ("H")
 [ ] Implement player
-    [ ] Walk around
+    [X] Walk around
     [ ] Jump over fences
-    [ ] Switch to map editor mode (press "M"?)
-    [ ] Remember to update the help text ("H")!..
+    [X] Switch to map editor mode (press "M"?)
+    [X] Remember to update the help text ("H")!..
 [ ] Implement tileset-based menus
     [ ] Scripts displaying text with a "next" button, like a character
         is talking to you
@@ -74,6 +74,7 @@
     [ ] Menus where you select from one of a number of options, like
         the list of items, your pokemon, etc
 [ ] Implement characters
+    [X] They appear on the map, are animated, etc. The player is one!
     [ ] Some of them should be shop owners, so you can buy items...
     [ ] Some of them should heal your pokemon...
 [ ] Implement triggers (places on the map you can interact with)...

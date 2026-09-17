@@ -96,6 +96,10 @@ Type Tileset
     StartX As Long
     StartY As Long
 
+    ' Width and height of tiles within this tileset
+    TileWidth As Long
+    TileHeight As Long
+
     ' How much to add to the (X, Y) coordinates of a tile to get to the
     ' ones next to it
     AddX As Long
@@ -108,6 +112,8 @@ End Type
 
 Dim Shared FontTileset As Tileset
 FontTileset.Image = FontImage
+FontTileset.TileWidth = 8
+FontTileset.TileHeight = 8
 FontTileset.AddX = 9
 FontTileset.AddY = 9
 FontTileset.StartX = 8
@@ -138,6 +144,8 @@ Const MapTilesetLower = 0
 Const MapTilesetUpper = 18
 Dim Shared MapTilesets(MapTilesetLower To MapTilesetUpper) As Tileset
 MapTilesets(0).Image = TilesetsImage
+MapTilesets(0).TileWidth = 8
+MapTilesets(0).TileHeight = 8
 MapTilesets(0).AddX = 8
 MapTilesets(0).AddY = 8
 MapTilesets(0).StartX = 2
@@ -173,7 +181,7 @@ Dim Shared MapTilesetNumber As Long
 Const MapTileWidth = TileWidth * 2
 Const MapTileHeight = TileHeight * 2
 Type MapTile
-    Solid As Integer
+    IsSolid As Integer
     HasPokemon As Integer
 
     ' Top/bottom left/right: tile indexes, to be interpreted as (X, Y)
@@ -196,29 +204,91 @@ Dim Shared MapWidth As Long
 Dim Shared MapHeight As Long
 ReDim Shared Map(MapWidth - 1, MapHeight - 1) As Long
 
-' Load the map!..
-' NOTE: MapFilename might change later, if the user wants to save the map
-' to a different file.
-MapFilename = "maps/test0.txt"
-LoadMap MapFilename
-
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO CHARACTERS
+
+Dim Shared CharacterTileset As Tileset
+CharacterTileset.Image = CharactersImage
+CharacterTileset.TileWidth = 16
+CharacterTileset.TileHeight = 16
+CharacterTileset.AddX = 17
+CharacterTileset.AddY = 17
+CharacterTileset.StartX = 9
+CharacterTileset.StartY = 34
+SetTilesetClearColor CharacterTileset
+
+' Directions a character can be facing
+Const FACING_UP = 0
+Const FACING_DOWN = 1
+Const FACING_LEFT = 2
+Const FACING_RIGHT = 3
+
+' States a character can be in, that is, things they can be doing
+Const STATE_STANDING = 0
+Const STATE_WALKING = 1
+Const STATE_JUMPING = 2
+
+Type Character
+    ' Character's position on the map, in map tiles
+    X As Long
+    Y As Long
+
+    ' When drawing the character, add these extra pixel coordinates, so
+    ' that they can smoothly move between map tiles
+    ExtraX As Long
+    ExtraY As Long
+
+    ' Start of this character's tiles within CharacterTileset.
+    ' This should basically never change: it determines what this character
+    ' look like, for instance if it's the player character, or a boy with
+    ' glasses, or a girl with a headband, or a bald man, etc.
+    TileStartX As Long
+    TileStartY As Long
+
+    ' Offset from TileStartX, TileStartY to the tile character should use
+    ' when rendered.
+    ' This is updated each frame of animation according to the character's
+    ' State and Frame. See HandleCharacterAnimation for details.
+    TileAddX As Long
+    TileAddY As Long
+
+    ' Which direction the character is facing, for instance, FACING_UP
+    Facing As Long
+
+    ' The character's state, that is, what they are doing.
+    ' For instance, STATE_STANDING
+    State As Long
+
+    ' Frame of animation, that is, how far along in the animation the
+    ' character is for their State.
+    ' For instance, if the character is walking (State = STATE_WALKING),
+    ' their Frame starts at 0 and goes up by 1 until the walking animation
+    ' is finished, and State goes back to STATE_STANDING.
+    Frame As Long
+End Type
+
+ReDim Shared Characters(1) As Character
 
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO THE PLAYER
 
-Dim Shared PlayerX As Long
-Dim Shared PlayerY As Long
-Dim Shared PlayerScrollX As Long
-Dim Shared PlayerScrollY As Long
+' Index into Characters
+Const PLAYER = 1
+
+' TODO: items
 
 
 ' ########################################################################
 ' # THAT'S THE END OF ALL THE DECLARATIONS!
 ' # NOW WE ACTUALLY CREATE A WINDOW AND START THE GAME!
+
+' Load the map!..
+' NOTE: MapFilename might change later, if the user wants to save the map
+' to a different file.
+MapFilename = "maps/test0.txt"
+LoadMap MapFilename
 
 ' Set up the window/screen
 Screen _NewImage(ScreenWidth, ScreenHeight, 32)
@@ -231,24 +301,49 @@ Do
     _Dest ScreenImage
     Cls
 
+    ' Render the map onto the game boy's screen
     RenderMap
-
-    ' Render game boy's screen to actual screen
-    RenderScreen
 
     ' Mode-specific behaviour
     If Mode = GAME_MODE Then
-        ' TODO: player walks around, etc
         If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
+
+        ' Handle player's controls, that is, react to keys the player
+        ' is pressing
+        If Characters(PLAYER).State = STATE_STANDING Then
+            Dim MoveDirection As Long
+            MoveDirection = GetPlayerMoveDirection
+            If MoveDirection >= 0 Then
+                ' A single arrow key was pressed!.. so, let's walk in
+                ' that direction.
+                Characters(PLAYER).Facing = MoveDirection
+                Dim NewX As Long, NewY As Long
+                NewX = PlayerX + FacingAddX(MoveDirection)
+                NewY = PlayerY + FacingAddY(MoveDirection)
+                If Not MapIsSolidAt(NewX, NewY) Then
+                    ' We are ok to move to the new map position
+                    Characters(PLAYER).X = NewX
+                    Characters(PLAYER).Y = NewY
+                    Characters(PLAYER).State = STATE_WALKING
+                End If
+            End If
+        End If
+
+        ' Update all characters
+        Dim I As Long
+        For I = 1 To UBound(Characters)
+            HandleCharacterAnimation I
+            RenderCharacter I
+        Next
     ElseIf Mode = MAP_EDITOR_MODE Then
         If KeyPressed(UpCode) And PlayerY > 0 Then _
-            PlayerY = PlayerY - 1
+            Characters(PLAYER).Y = PlayerY - 1
         If KeyPressed(DownCode) And PlayerY < MapHeight - 1 Then _
-            PlayerY = PlayerY + 1
+            Characters(PLAYER).Y = PlayerY + 1
         If KeyPressed(LeftCode) And PlayerX > 0 Then _
-            PlayerX = PlayerX - 1
+            Characters(PLAYER).X = PlayerX - 1
         If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
-            PlayerX = PlayerX + 1
+            Characters(PLAYER).X = PlayerX + 1
         If KeyPressed(Asc("m")) Then Mode = GAME_MODE
         If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
         If KeyPressed(Asc("c")) Then Mode = MAP_SCROLL_MODE
@@ -264,6 +359,9 @@ Do
     Else
         Die "Unknown mode: " + Mode
     End If
+
+    ' Render game boy's screen to actual screen
+    RenderScreen
 
     ' While the H key is being held down, show the "help" message
     If _KeyDown(Asc("h")) Then PrintHelp
@@ -461,9 +559,13 @@ End Sub
 
 Sub RenderTile( _
     Tileset As Tileset, TileX As Long, TileY As Long, _
-    X As Long, Y As Long _
+    X As Long, Y As Long, ExtraX As Long, ExtraY As Long _
 )
     ' NOTE: this subroutine expects _Dest to already be set!..
+
+    Dim TileW As Long, TileH As Long
+    TileW = Tileset.TileWidth
+    TileH = Tileset.TileHeight
 
     ' Source and destination (X, Y) coordinates
     Dim SrcX As Long, SrcY As Long
@@ -471,12 +573,12 @@ Sub RenderTile( _
 
     SrcX = Tileset.StartX + TileX * Tileset.AddX
     SrcY = Tileset.StartY + TileY * Tileset.AddY
-    DstX = X * TileWidth
-    DstY = Y * TileHeight
+    DstX = X * TileW + ExtraX
+    DstY = Y * TileH + ExtraY
     _PutImage _
-        (DstX, DstY)-(DstX + TileWidth - 1, DstY + TileHeight - 1), _
+        (DstX, DstY)-(DstX + TileW - 1, DstY + TileH - 1), _
         Tileset.Image, _Dest, _
-        (SrcX, SrcY)-(SrcX + TileWidth - 1, SrcY + TileHeight - 1)
+        (SrcX, SrcY)-(SrcX + TileW - 1, SrcY + TileH - 1)
 End Sub
 
 Sub WriteText(Text As String)
@@ -491,7 +593,7 @@ Sub WriteText(Text As String)
     For I = 1 To Len(Text)
         Ch = Asc(Mid$(Text, I, 1)) ' Get the next character from Text
         Entry = CharacterMapEntries(FontTileset.CharacterMap, Ch)
-        RenderTile FontTileset, Entry.X, Entry.Y, WriteX, WriteY
+        RenderTile FontTileset, Entry.X, Entry.Y, WriteX, WriteY, 0, 0
         WriteX = WriteX + 1
     Next
 End Sub
@@ -545,7 +647,7 @@ Sub LoadMapTiles
         If Text = "" Or Left$(Text, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Text = "solid" Then
-            MapTiles(I).Solid = True
+            MapTiles(I).IsSolid = True
         ElseIf Text = "pokemon" Then
             MapTiles(I).HasPokemon = True
         ElseIf ParsingBottom Then
@@ -617,13 +719,38 @@ Sub LoadMap(Filename As String)
 
     LoadMapTiles
 
-    PlayerX = MapWidth / 2
-    PlayerY = MapHeight / 2
-    PlayerScrollX = 0
-    PlayerScrollY = 0
+    ' Reset the character: they are now standing in the middle of the map.
+    Characters(PLAYER).X = MapWidth / 2
+    Characters(PLAYER).Y = MapHeight / 2
+    Characters(PLAYER).ExtraX = 0
+    Characters(PLAYER).ExtraY = 0
+    Characters(PLAYER).State = STATE_STANDING
+    Characters(PLAYER).Frame = 0
 
     RenderMapImage
 End Sub
+
+Function WithinMap(X As Long, Y As Long)
+    WithinMap = True
+    If X < 0 Or X > UBound(Map, 1) Then WithinMap = False
+    If Y < 0 Or Y > UBound(Map, 2) Then WithinMap = False
+End Function
+
+Function MapIsSolidAt(X As Long, Y As Long)
+    If Not WithinMap(X, Y) Then
+        MapIsSolidAt = True
+        Exit Function
+    End If
+    MapIsSolidAt = MapTiles(Map(X, Y)).IsSolid
+End Function
+
+Function MapHasPokemonAt(X As Long, Y As Long)
+    If WithinMap(X, Y) Then
+        MapHasPokemonAt = True
+        Exit Function
+    End If
+    MapHasPokemonAt = MapTiles(Map(X, Y)).HasPokemon
+End Function
 
 ' Render a map tile, that is, a 2x2 square of tiles
 Sub RenderMapTile(X As Long, Y As Long)
@@ -639,22 +766,22 @@ Sub RenderMapTile(X As Long, Y As Long)
     ' Top-left tile
     XY = MapTile.TL
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 0
+        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 0, 0, 0
 
     ' Top-right tile
     XY = MapTile.TR
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 0
+        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 0, 0, 0
 
     ' Bottom-left tile
     XY = MapTile.BL
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 1
+        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 1, 0, 0
 
     ' Bottom-right tile
     XY = MapTile.BR
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 1
+        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 1, 0, 0
 End Sub
 
 Sub RenderMapImage
@@ -670,10 +797,14 @@ End Sub
 
 Sub RenderMap
     ' Copy the map onto the game boy's screen
+
+    ' The location in pixels of the top-left corner of the map on the
+    ' game boy's screen
     Dim MapScrollX As Long
     Dim MapScrollY As Long
-    MapScrollX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerScrollX
-    MapScrollY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerScrollY
+    MapScrollX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
+    MapScrollY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
+
     _PutImage _
         (MapScrollX, MapScrollY) - ( _
             MapScrollX + MapWidth * MapTileWidth - 1, _
@@ -687,3 +818,114 @@ Sub RenderScreen
     ' (that is, the program's window)
     _PutImage (0, 0)-(ScreenWidth - 1, ScreenHeight - 1), ScreenImage, 0
 End Sub
+
+Function GetPlayerMoveDirection
+    Dim Up As Long, Down As Long, Left As Long, Right As Long
+    Up = _KeyDown(UpCode)
+    Down = _KeyDown(DownCode)
+    Left = _KeyDown(LeftCode)
+    Right = _KeyDown(RightCode)
+    
+    If Up + Down + Left + Right = True Then
+        ' Exactly one of the 4 arrow keys is being pressed
+        If Up Then GetPlayerMoveDirection = FACING_UP
+        If Down Then GetPlayerMoveDirection = FACING_DOWN
+        If Left Then GetPlayerMoveDirection = FACING_LEFT
+        If Right Then GetPlayerMoveDirection = FACING_RIGHT
+    Else
+        ' Either no arrow keys were pressed, or more than one were.
+        ' In either case, we don't have a specific direction.
+        GetPlayerMoveDirection = -1
+    End If
+End Function
+
+Function FacingAddX(Facing As Long)
+    If Facing = FACING_LEFT Then FacingAddX = -1
+    If Facing = FACING_RIGHT Then FacingAddX = 1
+End Function
+
+Function FacingAddY(Facing As Long)
+    If Facing = FACING_UP Then FacingAddY = -1
+    If Facing = FACING_DOWN Then FacingAddY = 1
+End Function
+
+Sub HandleCharacterAnimation(I As Long)
+    Dim State As Long, Facing As Long
+    State = Characters(I).State
+    Facing = Characters(I).Facing
+    If State = STATE_STANDING Then
+        If Facing = FACING_DOWN Then Characters(I).TileAddX = 1
+        If Facing = FACING_UP Then Characters(I).TileAddX = 4
+        If Facing = FACING_LEFT Then Characters(I).TileAddX = 6
+        If Facing = FACING_RIGHT Then Characters(I).TileAddX = 8
+    ElseIf State = STATE_WALKING Then
+        Dim Frame As Long
+        Frame = Characters(I).Frame
+
+        ' Update character's tile of animation... like, which picture
+        ' should we draw?.. character facing up with left foot forward?..
+        ' that kind of thing.
+        Dim Anim As Long
+        Anim = Int(Frame / 3)
+        If Facing = FACING_DOWN Then Characters(I).TileAddX = Anim Mod 3
+        If Facing = FACING_UP Then Characters(I).TileAddX = 3 + Anim Mod 3
+        If Facing = FACING_LEFT Then Characters(I).TileAddX = 6 + (Anim + 1) Mod 2
+        If Facing = FACING_RIGHT Then Characters(I).TileAddX = 8 + (Anim + 1) Mod 2
+
+        ' Increase character's Frame of animation
+        Characters(I).Frame = Frame + 1
+
+        ' Update character's ExtraX and ExtraY, that is, smoothly move
+        ' them from their old map tile towards the one they're walking
+        ' onto.
+        Const PixelsPerFrame = 2
+        Characters(I).ExtraX = (-16 + PixelsPerFrame * Frame) * FacingAddX(Facing)
+        Characters(I).ExtraY = (-16 + PixelsPerFrame * Frame) * FacingAddY(Facing)
+
+        If Frame >= 8 Then
+            ' Done the walking animation
+            Characters(I).State = STATE_STANDING
+            Characters(I).Frame = 0
+            Characters(I).ExtraX = 0
+            Characters(I).ExtraY = 0
+        End If
+    End If
+End Sub
+
+Sub RenderCharacter(I As Long)
+    ' Draw Characters(I) onto the game boy's screen
+
+    Dim Character As Character
+    Character = Characters(I)
+
+    Dim TileX As Long, TileY As Long
+    TileX = Character.TileStartX + Character.TileAddX
+    TileY = Character.TileStartY + Character.TileAddY
+
+    ' The location in pixels of the top-left corner of the map on the
+    ' game boy's screen
+    Dim MapX As Long
+    Dim MapY As Long
+    MapX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
+    MapY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
+
+    _Dest ScreenImage
+    RenderTile CharacterTileset, TileX, TileY, Character.X, Character.Y, _
+        MapX + Character.ExtraX, MapY + Character.ExtraY
+End Sub
+
+Function PlayerX
+    PlayerX = Characters(PLAYER).X
+End Function
+
+Function PlayerY
+    PlayerY = Characters(PLAYER).Y
+End Function
+
+Function PlayerExtraX
+    PlayerExtraX = Characters(PLAYER).ExtraX
+End Function
+
+Function PlayerExtraY
+    PlayerExtraY = Characters(PLAYER).ExtraY
+End Function

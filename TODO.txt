@@ -60,9 +60,9 @@
     [X] Scroll the map with wrapping ("X"?..)
     [X] Exit back to "player mode" where you walk around (press "M"?)
     [X] Map editor and tile selector should have their own help texts ("H")
-[ ] Implement player
+[X] Implement player
     [X] Walk around
-    [ ] Jump over fences
+    [X] Jump over fences
     [X] Switch to map editor mode (press "M"?)
     [X] Remember to update the help text ("H")!..
 [ ] Implement tileset-based menus
@@ -77,6 +77,13 @@
     [X] They appear on the map, are animated, etc. The player is one!
     [ ] Some of them should be shop owners, so you can buy items...
     [ ] Some of them should heal your pokemon...
+[ ] Implement items (lying on the ground, they look like pokeballs)
+    NOTE: They aren't actually map tiles!.. rather, they sit on top of
+    a map tile, which is uncovered when the item is taken.
+    [ ] Support hidden items, which you can still pick up, just you can't
+        see them!..
+        TODO: figure out whether any such items actually exist in Pokemon
+        Red/Blue. I'm actually not sure there are.
 [ ] Implement triggers (places on the map you can interact with)...
     Some of them you just step on, some of them you press "A" on, etc.
 [ ] Implement doors...

@@ -7,6 +7,9 @@ Const False = 0
 ' Frames per second (how fast the animation is)
 Const FPS = 30
 
+' Set to True to jump everywhere instead of walking... for debugging purposes!
+Const ALWAYS_JUMP = False
+
 ' Set up random number generator
 Randomize Timer
 
@@ -175,13 +178,20 @@ Dim MapFilename As String
 ' Index into MapTilesets
 Dim Shared MapTilesetNumber As Long
 
+' Solidity of map tiles, see Solidity field of type MapTile
+Const NOT_SOLID = 0
+Const SOLID = 1
+Const JUMP_DOWN = 2
+Const JUMP_LEFT = 3
+Const JUMP_RIGHT = 4
+
 ' Map tiles aren't the same as the regular tiles stored in a Tileset.
 ' Each map tile is actually a 2x2 square of regular tiles, plus some
 ' information affecting whether you can walk onto it, etc.
 Const MapTileWidth = TileWidth * 2
 Const MapTileHeight = TileHeight * 2
 Type MapTile
-    IsSolid As Integer
+    Solidity As Integer ' See SOLID, JUMP_DOWN, etc
     HasPokemon As Integer
 
     ' Top/bottom left/right: tile indexes, to be interpreted as (X, Y)
@@ -218,6 +228,19 @@ CharacterTileset.StartX = 9
 CharacterTileset.StartY = 34
 SetTilesetClearColor CharacterTileset
 
+' When pokemon show up on the map, they use this tileset.
+' See also the Character type's IsPokemon field, which just controls
+' whether this tileset is used.
+Dim Shared PokemonCharacterTileset As Tileset
+PokemonCharacterTileset = CharacterTileset
+PokemonCharacterTileset.StartY = 994
+
+' For non-character things which appear on the map, like items, or
+' your shadow when you jump.
+Dim Shared MiscCharacterTileset As Tileset
+MiscCharacterTileset = CharacterTileset
+MiscCharacterTileset.StartY = 1087
+
 ' Directions a character can be facing
 Const FACING_UP = 0
 Const FACING_DOWN = 1
@@ -230,6 +253,10 @@ Const STATE_WALKING = 1
 Const STATE_JUMPING = 2
 
 Type Character
+    ' Whether we should use PokemonCharacterTileset instead of
+    ' CharacterTileset
+    IsPokemon As Integer
+
     ' Character's position on the map, in map tiles
     X As Long
     Y As Long
@@ -266,6 +293,10 @@ Type Character
     ' their Frame starts at 0 and goes up by 1 until the walking animation
     ' is finished, and State goes back to STATE_STANDING.
     Frame As Long
+
+    ' Value which alternates between 0 and 1.
+    ' Determines whether left or right foot is used by the walking animation.
+    OtherFoot As Integer
 End Type
 
 ReDim Shared Characters(1) As Character
@@ -320,11 +351,19 @@ Do
                 Dim NewX As Long, NewY As Long
                 NewX = PlayerX + FacingAddX(MoveDirection)
                 NewY = PlayerY + FacingAddY(MoveDirection)
-                If Not MapIsSolidAt(NewX, NewY) Then
-                    ' We are ok to move to the new map position
+                Dim CanMove As Integer
+                CanMove = CanMoveTo(NewX, NewY, MoveDirection)
+                If ALWAYS_JUMP Then CanMove = 2 ' For debugging!
+                If CanMove = 1 Then
+                    ' We are ok to walk to the new map position
                     Characters(PLAYER).X = NewX
                     Characters(PLAYER).Y = NewY
                     Characters(PLAYER).State = STATE_WALKING
+                ElseIf CanMove = 2 Then
+                    ' We are ok to jump to the new map position
+                    Characters(PLAYER).X = NewX + FacingAddX(MoveDirection)
+                    Characters(PLAYER).Y = NewY + FacingAddY(MoveDirection)
+                    Characters(PLAYER).State = STATE_JUMPING
                 End If
             End If
         End If
@@ -644,10 +683,18 @@ Sub LoadMapTiles
     Do Until Eof(File)
         Line Input #File, Text
         LineNumber = LineNumber + 1
-        If Text = "" Or Left$(Text, 1) = "#" Then
+        Dim FirstChar As String
+        FirstChar = Left$(Text, 1)
+        If Text = "" Or FirstChar = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Text = "solid" Then
-            MapTiles(I).IsSolid = True
+            MapTiles(I).Solidity = SOLID
+        ElseIf Text = "jumpdown" Then
+            MapTiles(I).Solidity = JUMP_DOWN
+        ElseIf Text = "jumpleft" Then
+            MapTiles(I).Solidity = JUMP_LEFT
+        ElseIf Text = "jumpright" Then
+            MapTiles(I).Solidity = JUMP_RIGHT
         ElseIf Text = "pokemon" Then
             MapTiles(I).HasPokemon = True
         ElseIf ParsingBottom Then
@@ -656,11 +703,14 @@ Sub LoadMapTiles
             MapTiles(I).BR = Val("&H" + Mid$(Text, 4, 2))
             ParsingBottom = False
             I = I + 1
-        Else
+        ElseIf Instr("0123456789abcdef", FirstChar) Then
             ' Parsing top two tiles of this map tile
             MapTiles(I).TL = Val("&H" + Left$(Text, 2))
             MapTiles(I).TR = Val("&H" + Mid$(Text, 4, 2))
             ParsingBottom = True
+        Else
+            Die "Don't know what to do with line" + Str$(LineNumber) _
+                + ": [" + Text + "]"
         End If
     Loop
     Close File
@@ -736,12 +786,30 @@ Function WithinMap(X As Long, Y As Long)
     If Y < 0 Or Y > UBound(Map, 2) Then WithinMap = False
 End Function
 
-Function MapIsSolidAt(X As Long, Y As Long)
+Function MapSolidityAt(X As Long, Y As Long)
     If Not WithinMap(X, Y) Then
-        MapIsSolidAt = True
+        MapSolidityAt = SOLID
         Exit Function
     End If
-    MapIsSolidAt = MapTiles(Map(X, Y)).IsSolid
+    MapSolidityAt = MapTiles(Map(X, Y)).Solidity
+End Function
+
+' Whether a character facing the indicated direction can move to the
+' indicated map location.
+' Returns 1 if character can walk there, 2 if they can jump, 0 otherwise.
+Function CanMoveTo(X As Long, Y As Long, MoveDirection As Long)
+    Dim Solidity As Long
+    Solidity = MapSolidityAt(X, Y)
+    CanMoveTo = 0
+    If Solidity = NOT_SOLID Then
+        CanMoveTo = 1 ' Can walk there
+    ElseIf Solidity = JUMP_DOWN Then
+        If MoveDirection = FACING_DOWN Then CanMoveTo = 2 ' Can jump there
+    ElseIf Solidity = JUMP_LEFT Then
+        If MoveDirection = FACING_LEFT Then CanMoveTo = 2 ' Can jump there
+    ElseIf Solidity = JUMP_RIGHT Then
+        If MoveDirection = FACING_RIGHT Then CanMoveTo = 2 ' Can jump there
+    End If
 End Function
 
 Function MapHasPokemonAt(X As Long, Y As Long)
@@ -858,42 +926,64 @@ Sub HandleCharacterAnimation(I As Long)
         If Facing = FACING_UP Then Characters(I).TileAddX = 4
         If Facing = FACING_LEFT Then Characters(I).TileAddX = 6
         If Facing = FACING_RIGHT Then Characters(I).TileAddX = 8
-    ElseIf State = STATE_WALKING Then
+    ElseIf State = STATE_WALKING Or State = STATE_JUMPING Then
         Dim Frame As Long
         Frame = Characters(I).Frame
+
+        ' Jumping takes twice as long as walking
+        Dim Multiplier As Long
+        Multiplier = 1
+        If State = STATE_JUMPING Then Multiplier = 2
 
         ' Update character's tile of animation... like, which picture
         ' should we draw?.. character facing up with left foot forward?..
         ' that kind of thing.
         Dim Anim As Long
-        Anim = Int(Frame / 3)
-        If Facing = FACING_DOWN Then Characters(I).TileAddX = Anim Mod 3
-        If Facing = FACING_UP Then Characters(I).TileAddX = 3 + Anim Mod 3
-        If Facing = FACING_LEFT Then Characters(I).TileAddX = 6 + (Anim + 1) Mod 2
-        If Facing = FACING_RIGHT Then Characters(I).TileAddX = 8 + (Anim + 1) Mod 2
-
-        ' Increase character's Frame of animation
-        Characters(I).Frame = Frame + 1
+        Anim = Int(Frame / 4 / Multiplier)
+        If Facing = FACING_DOWN Then
+            Anim = (Anim + Characters(I).OtherFoot * 2) Mod 4
+            If Anim = 3 Then Anim = 1
+            Characters(I).TileAddX = Anim
+        ElseIf Facing = FACING_UP Then
+            Anim = (Anim + Characters(I).OtherFoot * 2) Mod 4
+            If Anim = 3 Then Anim = 1
+            Characters(I).TileAddX = 3 + Anim
+        ElseIf Facing = FACING_LEFT Then
+            Anim = (Anim + 1) Mod 2
+            Characters(I).TileAddX = 6 + Anim
+        ElseIf Facing = FACING_RIGHT Then
+            Anim = (Anim + 1) Mod 2
+            Characters(I).TileAddX = 8 + Anim
+        End If
 
         ' Update character's ExtraX and ExtraY, that is, smoothly move
         ' them from their old map tile towards the one they're walking
         ' onto.
         Const PixelsPerFrame = 2
-        Characters(I).ExtraX = (-16 + PixelsPerFrame * Frame) * FacingAddX(Facing)
-        Characters(I).ExtraY = (-16 + PixelsPerFrame * Frame) * FacingAddY(Facing)
+        Characters(I).ExtraX = _
+            (-16 * Multiplier + PixelsPerFrame * (Frame + 1)) _
+            * FacingAddX(Facing)
+        Characters(I).ExtraY = _
+            (-16 * Multiplier + PixelsPerFrame * (Frame + 1)) _
+            * FacingAddY(Facing)
 
-        If Frame >= 8 Then
-            ' Done the walking animation
+        If Frame >= 8 * Multiplier - 1 Then
+            ' Done the walking/jumping animation
             Characters(I).State = STATE_STANDING
             Characters(I).Frame = 0
             Characters(I).ExtraX = 0
             Characters(I).ExtraY = 0
+            Characters(I).OtherFoot = (Characters(I).OtherFoot + 1) Mod 2
+        Else
+            Characters(I).Frame = Frame + 1
         End If
     End If
 End Sub
 
 Sub RenderCharacter(I As Long)
     ' Draw Characters(I) onto the game boy's screen
+
+    _Dest ScreenImage
 
     Dim Character As Character
     Character = Characters(I)
@@ -902,16 +992,42 @@ Sub RenderCharacter(I As Long)
     TileX = Character.TileStartX + Character.TileAddX
     TileY = Character.TileStartY + Character.TileAddY
 
+    ' The location in pixels to render the character at
+    Dim X As Long
+    Dim Y As Long
+
     ' The location in pixels of the top-left corner of the map on the
     ' game boy's screen
-    Dim MapX As Long
-    Dim MapY As Long
-    MapX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
-    MapY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
+    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX
+    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY
 
-    _Dest ScreenImage
-    RenderTile CharacterTileset, TileX, TileY, Character.X, Character.Y, _
-        MapX + Character.ExtraX, MapY + Character.ExtraY
+    If Characters(I).State = STATE_JUMPING Then
+        ' When a character is jumping, we need to render their shadow
+        RenderTile MiscCharacterTileset, 9, 0, Character.X, Character.Y, _
+            X + Character.ExtraX, Y + Character.ExtraY
+
+        ' Character's sprite moves up and down as they jump
+        Dim Frame As Long
+        Frame = Characters(I).Frame
+        Y = Y - (10 - Abs(Frame - 8))
+    End If
+
+    ' Pokemon use a different character tileset
+    Dim Tileset As Tileset
+    If Characters(I).IsPokemon Then
+        Tileset = PokemonCharacterTileset
+    Else
+        Tileset = CharacterTileset
+    End If
+
+    ' Characters are rendered a little bit above the map tile they're
+    ' at, which results in a slightly 3d effect, like they're in front
+    ' of any walls "behind" them (i.e. the tile directly above them)
+    Y = Y - 4
+
+    ' Actually render the character onto the game boy's screen
+    RenderTile Tileset, TileX, TileY, Character.X, Character.Y, _
+        X + Character.ExtraX, Y + Character.ExtraY
 End Sub
 
 Function PlayerX

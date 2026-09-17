@@ -45,3 +45,12 @@ solid
 # a: dirt with flower in top-left
 03 2c
 2c 2c
+
+# b: light grass with fence
+jumpdown
+39 39
+36 37
+
+# c: light grass with gate
+39 39
+3c 3c

@@ -10,6 +10,17 @@ Const FPS = 30
 ' Set up random number generator
 Randomize Timer
 
+' Used by KeyPressed
+Dim Shared PrevKeyCode As Long
+
+' Keyboard key codes
+Const UpCode = 18432
+Const DownCode = 20480
+Const LeftCode = 19200
+Const RightCode = 19712
+Const EnterCode = 13
+Const EscapeCode = 27
+
 ' Size of the gameboy's screen in pixels
 Const TrueScreenWidth = 160
 Const TrueScreenHeight = 144
@@ -20,6 +31,16 @@ Const TrueScreenHeight = 144
 Const ScreenZoom = 3
 Const ScreenWidth = TrueScreenWidth * ScreenZoom
 Const ScreenHeight = TrueScreenHeight * ScreenZoom
+
+' The program's current "mode", e.g. whether you're walking around, or
+' editing the map, etc
+Dim Shared Mode As String
+Const GAME_MODE = ""
+Const MAP_EDITOR_MODE = "Map Editor"
+Const MAP_SCROLL_MODE = "Map Scrolling Tool"
+Const MAP_RESIZE_MODE = "Map Resizing Tool"
+Const TILE_SELECTOR_MODE = "Tile Selector"
+Mode = GAME_MODE
 
 ' The image on the game boy's screen
 Dim Shared ScreenImage As Long
@@ -206,33 +227,209 @@ _ScreenMove _Middle
 
 ' Enter the main loop!..
 Do
-    Cls 0 ' Clear the screen
-    RenderMap
-    WriteAt 0, 0
-    WriteText "Hello world!"
+    ' Clear the screen
+    _Dest ScreenImage
+    Cls
 
-    ' While the H key is being held down, show the "help" message
-    If _KeyDown(Asc("h")) Then
-        _Dest 0
-        Locate 2, 2
-        Print "Keyboard controls:"
-        Print " H: show this help"
-        Print " Escape: quit the program"
+    RenderMap
+
+    ' Render game boy's screen to actual screen
+    RenderScreen
+
+    ' Mode-specific behaviour
+    If Mode = GAME_MODE Then
+        ' TODO: player walks around, etc
+        If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
+    ElseIf Mode = MAP_EDITOR_MODE Then
+        If KeyPressed(UpCode) And PlayerY > 0 Then _
+            PlayerY = PlayerY - 1
+        If KeyPressed(DownCode) And PlayerY < MapHeight - 1 Then _
+            PlayerY = PlayerY + 1
+        If KeyPressed(LeftCode) And PlayerX > 0 Then _
+            PlayerX = PlayerX - 1
+        If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
+            PlayerX = PlayerX + 1
+        If KeyPressed(Asc("m")) Then Mode = GAME_MODE
+        If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
+        If KeyPressed(Asc("c")) Then Mode = MAP_SCROLL_MODE
+        If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
+    ElseIf Mode = MAP_SCROLL_MODE Then
+        HandleMapScrollMode
+        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+    ElseIf Mode = MAP_RESIZE_MODE Then
+        HandleMapResizeMode
+        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+    ElseIf Mode = TILE_SELECTOR_MODE Then
+        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+    Else
+        Die "Unknown mode: " + Mode
     End If
 
+    ' While the H key is being held down, show the "help" message
+    If _KeyDown(Asc("h")) Then PrintHelp
+
+    ' Display the current mode
+    _Dest 0
+    Locate 1, 1
+    Print Mode
+
     ' Show whatever we've drawn on the screen
-    RenderScreen
+    _Display
 
     ' Make sure the animation doesn't go faster than our intended
     ' frames-per-second (FPS)
     _Limit FPS
-Loop Until _KeyDown(27) ' Quit if escape key is pressed
+Loop Until _KeyDown(EscapeCode) ' Quit if escape key is pressed
 
 System ' Close the program without saying "Press any key..."
 
 
 ' ########################################################################
 ' # FUNCTION AND SUBROUTINE DEFINITIONS
+
+Function Wrap(Value As Long, MaxValue As Long)
+    ' This works so long as Value > -MaxValue
+    Wrap = (Value + MaxValue) Mod MaxValue
+End Function
+
+Function KeyPressed(KeyCode AS Long)
+    KeyPressed = False
+    If _KeyDown(KeyCode) Then
+        If KeyCode <> PrevKeyCode Then
+            KeyPressed = True
+            PrevKeyCode = KeyCode
+        End If
+    Else
+        If KeyCode = PrevKeyCode Then
+            PrevKeyCode = 0
+        End If
+    End If
+End Function
+
+Sub PrintHelp
+    _Dest 0
+    Locate 2, 2
+    Print "Keyboard controls:"
+    Print " H: show this help"
+    If Mode = GAME_MODE Then
+        Print " Arrow keys: move"
+        Print " Z: gameboy's A button"
+        Print " X: gameboy's B button"
+        Print " C: gameboy's Select button"
+        Print " Enter: gameboy's Start button"
+        Print " M: enter map editor mode"
+    ElseIf Mode = MAP_EDITOR_MODE Then
+        Print " Arrow keys: move"
+        Print " 0-9: place tile"
+        Print " T: enter tile selection mode"
+        Print " C: enter map scroll mode"
+        Print " R: enter map resize mode"
+        Print " M: exit map editor mode"
+    ElseIf Mode = MAP_SCROLL_MODE Then
+        Print " Arrow keys: scroll the map"
+        Print " Enter: exit map scroll mode"
+    ElseIf Mode = MAP_RESIZE_MODE Then
+        Print " Arrow keys: resize the map"
+        Print " Enter: exit map resize mode"
+    ElseIf Mode = TILE_SELECTOR_MODE Then
+        Print " Arrow keys: move"
+        Print " 0-9: place tile"
+        Print " Enter: exit tile selection mode"
+    Else
+        Die "Unknown mode: " + Mode
+    End If
+    Print " Escape: quit the program"
+End Sub
+
+Sub HandleMapScrollMode
+    If KeyPressed(UpCode) Then ScrollMap 0, -1
+    If KeyPressed(DownCode) Then ScrollMap 0, 1
+    If KeyPressed(LeftCode) Then ScrollMap -1, 0
+    If KeyPressed(RightCode) Then ScrollMap 1, 0
+End Sub
+
+Sub ScrollMap(AddX As Long, AddY As Long)
+    Dim X As Long, Y As Long, X2 As Long, Y2 As Long
+    Dim TempValue As Long
+
+    ' The start and end values of the for-loops
+    Dim StartX As Long, EndX As Long, StepX As Long
+    Dim StartY As Long, EndY As Long, StepY As Long
+    If AddX < 0 Then
+        StartX = 0
+        EndX = MapWidth - 1
+        StepX = 1
+    Else
+        StartX = MapWidth - 1
+        EndX = 0
+        StepX = -1
+    End If
+    If AddY < 0 Then
+        StartY = 0
+        EndY = MapHeight - 1
+        StepY = 1
+    Else
+        StartY = MapHeight - 1
+        EndY = 0
+        StepY = -1
+    End If
+
+    For Y = StartY To EndY + AddY Step StepY
+        For X = StartX To EndX + AddX Step StepX
+            X2 = Wrap(X + AddX, MapWidth)
+            Y2 = Wrap(Y + AddY, MapHeight)
+            TempValue = Map(X, Y)
+            Map(X, Y) = Map(X2, Y2)
+            Map(X2, Y2) = TempValue
+        Next
+    Next
+
+    RenderMapImage
+End Sub
+
+Sub HandleMapResizeMode
+    If KeyPressed(UpCode) And MapHeight > 1 Then ResizeMap 0, -1
+    If KeyPressed(DownCode) Then ResizeMap 0, 1
+    If KeyPressed(LeftCode) And MapWidth > 1 Then ResizeMap -1, 0
+    If KeyPressed(RightCode) Then ResizeMap 1, 0
+End Sub
+
+Sub ResizeMap(AddX As Long, AddY As Long)
+    Dim X As Long, Y As Long
+
+    ' Create a copy of the map's data
+    Dim OldMap(0 To MapWidth - 1, 0 To MapHeight - 1) As Long
+    For X = 0 To MapWidth - 1
+        For Y = 0 To MapHeight - 1
+            OldMap(X, Y) = Map(X, Y)
+        Next
+    Next
+
+    ' Prepare to copy the old data to the new map...
+    Dim MinMapWidth As Long, MinMapHeight As Long
+    MinMapWidth = MapWidth
+    MinMapHeight = MapHeight
+    If AddX < 0 Then MinMapWidth = MinMapWidth + AddX
+    If AddY < 0 Then MinMapHeight = MinMapHeight + AddY
+
+    ' Actually resize the map
+    MapWidth = MapWidth + AddX
+    MapHeight = MapHeight + AddY
+    ReDim Map(0 To MapWidth - 1, 0 To MapHeight - 1) As Long
+
+    ' Copy the old data to the new map
+    For X = 0 To MinMapWidth - 1
+        For Y = 0 To MinMapHeight - 1
+            Map(X, Y) = OldMap(X, Y)
+        Next
+    Next
+
+    ' Now create a fresh map image, and render it
+    _FreeImage MapImage
+    MapImage = _NewImage(MapWidth * MapTileWidth, _
+        MapHeight * MapTileHeight, 32)
+    RenderMapImage
+End Sub
 
 Sub SetTilesetClearColor(T As Tileset)
     ' Set the "clear color", i.e. the transparent color, for the given
@@ -269,10 +466,8 @@ Sub RenderTile( _
     ' NOTE: this subroutine expects _Dest to already be set!..
 
     ' Source and destination (X, Y) coordinates
-    Dim SrcX As Long
-    Dim SrcY As Long
-    Dim DstX As Long
-    Dim DstY As Long
+    Dim SrcX As Long, SrcY As Long
+    Dim DstX As Long, DstY As Long
 
     SrcX = Tileset.StartX + TileX * Tileset.AddX
     SrcY = Tileset.StartY + TileY * Tileset.AddY
@@ -491,5 +686,4 @@ Sub RenderScreen
     ' Draw the game boy's screen (that is, ScreenImage) on the actual screen
     ' (that is, the program's window)
     _PutImage (0, 0)-(ScreenWidth - 1, ScreenHeight - 1), ScreenImage, 0
-    _Display
 End Sub

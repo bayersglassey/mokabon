@@ -55,11 +55,11 @@
     [ ] Map editor: arrow keys move the map around (using PlayerX, PlayerY),
         press number keys 0-9 to place tiles.
     [ ] Set map filename (with "F")
-    [ ] Set map size (with... "Z"?)
-    [ ] Scroll the map with wrapping ("X"?..)
     [ ] Save map, load map (with "S", "L")
-    [ ] Exit back to "player mode" where you walk around (press "M"?)
-    [ ] Map editor and tile selector should have their own help texts ("H")
+    [X] Set map size (with... "Z"?)
+    [X] Scroll the map with wrapping ("X"?..)
+    [X] Exit back to "player mode" where you walk around (press "M"?)
+    [X] Map editor and tile selector should have their own help texts ("H")
 [ ] Implement player
     [ ] Walk around
     [ ] Jump over fences

@@ -429,6 +429,23 @@ Do
         ' 0-9 at the bottom of the screen
         RenderSelectedMapTiles
 
+        ' Map saving/loading
+        If KeyPressed(Asc("f")) Then
+            _Dest 0
+            Print "Current map filename: " + MapFilename
+            Input "Change map filename: ", MapFilename
+            If Not Instr(MapFilename, "/") Then _
+                MapFilename = "maps/" + MapFilename
+            If Not Instr(MapFilename, ".") Then _
+                MapFilename = MapFilename + ".txt"
+            ' The enter key was just pressed (because we used Input), so
+            ' make sure we don't immediately exit the map editor because
+            ' of that!..
+            PrevKeyCode = EnterCode
+        End If
+        If KeyPressed(Asc("s")) Then SaveMap MapFilename
+        If KeyPressed(Asc("l")) Then LoadMap MapFilename
+
         ' Maybe switch to a different mode
         If KeyPressed(Asc("m")) Or KeyPressed(EnterCode) Then _
             Mode = GAME_MODE
@@ -536,6 +553,9 @@ Sub PrintHelp
         Print " C: gameboy's Select button"
         Print " Enter: gameboy's Start button"
         Print " M: enter map editor mode"
+        Print " F: change map filename"
+        Print " S: save map"
+        Print " L: load map"
     ElseIf Mode = MAP_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: place tile"
@@ -742,11 +762,15 @@ Sub Parse(Text As String)
 End Sub
 
 Sub NextToken
-    Dim I As Long
+    Dim I As Long, J As Long
     I = Instr(ParseText, " ")
+    J = I + 1
+    While Mid$(ParseText, J, 1) = " "
+        J = J + 1
+    Wend
     If I > 0 Then
         Token = Left$(ParseText, I)
-        ParseText = Mid$(ParseText, I + 1)
+        ParseText = Mid$(ParseText, J)
     Else
         Token = ParseText
         ParseText = ""
@@ -810,6 +834,24 @@ Sub LoadMapTiles
     End If
 
     NumMapTiles = I
+End Sub
+
+Sub SaveMap(Filename As String)
+    Dim X As Long, Y As Long
+    Dim File As Long
+    File = FreeFile
+    Open Filename For Output As File
+        Print #File, "tileset "; MapTilesetNumber
+
+        Print #File, "tiles "; MapWidth; " "; MapHeight
+        For Y = 0 To MapHeight - 1
+            For X = 0 To MapWidth - 1
+                If X > 0 Then Print #File, " ";
+                Print #File, Hex$(Map(X, Y));
+            Next
+            Print #File, ""
+        Next
+    Close File
 End Sub
 
 Sub LoadMap(Filename As String)

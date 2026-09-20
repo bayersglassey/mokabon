@@ -54,12 +54,16 @@
         Press "T" to enter/exit the tile selector.
     [X] Map editor: arrow keys move the map around (using PlayerX, PlayerY),
         press number keys 0-9 to place tiles.
-    [ ] Set map filename (with "F")
-    [ ] Save map, load map (with "S", "L")
+    [X] Set map filename (with "F")
+    [X] Save map, load map (with "S", "L")
     [X] Set map size (with... "Z"?)
     [X] Scroll the map with wrapping ("X"?..)
     [X] Exit back to "player mode" where you walk around (press "M"?)
     [X] Map editor and tile selector should have their own help texts ("H")
+    [ ] Set an "anchor point", then move around, the "selection box" should
+        be a rectangle around both the anchor point and your current position,
+        and when you press 0-9, it should fill that rectangle.
+        Set/remove anchor point with "A".
 [X] Implement player
     [X] Walk around
     [X] Jump over fences

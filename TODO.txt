@@ -49,10 +49,10 @@
         So now, the elements of Maptiles should presumably be of type
         Maptile.
 [ ] Implement map editor
-    [ ] Map tile selector: show current map's tiles, arrow keys to
+    [X] Map tile selector: show current map's tiles, arrow keys to
         move around, press number keys 0-9 to assign tiles to them.
         Press "T" to enter/exit the tile selector.
-    [ ] Map editor: arrow keys move the map around (using PlayerX, PlayerY),
+    [X] Map editor: arrow keys move the map around (using PlayerX, PlayerY),
         press number keys 0-9 to place tiles.
     [ ] Set map filename (with "F")
     [ ] Save map, load map (with "S", "L")

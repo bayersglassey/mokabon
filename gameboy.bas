@@ -45,6 +45,10 @@ Const MAP_RESIZE_MODE = "Map Resizing Tool"
 Const TILE_SELECTOR_MODE = "Tile Selector"
 Mode = GAME_MODE
 
+' When Mode = TILE_SELECTOR_MODE, we render MapTiles as a grid, and this
+' is the width of that grid (in map tiles).
+Const TileSelectorWidth = 8
+
 ' The image on the game boy's screen
 Dim Shared ScreenImage As Long
 ScreenImage = _NewImage(TrueScreenWidth, TrueScreenHeight, 32)
@@ -208,6 +212,9 @@ End Type
 Const MaxMapTiles = 50
 Dim Shared MapTiles(0 To MaxMapTiles - 1) As MapTile
 
+' Current number of maptiles, i.e. entries of MapTiles
+Dim Shared NumMapTiles As Long
+
 ' Width and height of the map, in "map tiles" (see the MapTile type).
 ' The elements of Map are indices into MapTiles.
 Dim Shared MapWidth As Long
@@ -303,6 +310,25 @@ ReDim Shared Characters(1) As Character
 
 
 ' #################################################################
+' # DECLARATIONS RELATED TO THE MAP EDITOR
+
+' The map tiles which can be put on the map by pressing the number
+' keys 0-9
+Dim Shared SelectedMapTiles(10) As Integer
+SelectedMapTiles(1) = 0
+SelectedMapTiles(2) = 1
+SelectedMapTiles(3) = 2
+SelectedMapTiles(4) = 3
+SelectedMapTiles(5) = 4
+SelectedMapTiles(6) = 5
+SelectedMapTiles(7) = 6
+SelectedMapTiles(8) = 7
+SelectedMapTiles(9) = 8
+SelectedMapTiles(10) = 9
+Dim Shared SelectedMapTileNumber As Long
+
+
+' #################################################################
 ' # DECLARATIONS RELATED TO THE PLAYER
 
 ' Index into Characters
@@ -332,12 +358,14 @@ Do
     _Dest ScreenImage
     Cls
 
-    ' Render the map onto the game boy's screen
-    RenderMap
+    Dim I As Long
 
     ' Mode-specific behaviour
     If Mode = GAME_MODE Then
         If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
+
+        ' Render the map onto the game boy's screen
+        RenderMap
 
         ' Handle player's controls, that is, react to keys the player
         ' is pressing
@@ -369,12 +397,14 @@ Do
         End If
 
         ' Update all characters
-        Dim I As Long
         For I = 1 To UBound(Characters)
             HandleCharacterAnimation I
             RenderCharacter I
         Next
     ElseIf Mode = MAP_EDITOR_MODE Then
+        ' Move the player with the arrow keys; in map editor mode, the
+        ' player is invisible, and in their place is a box showing the
+        ' current map location (that is, tile) to be edited.
         If KeyPressed(UpCode) And PlayerY > 0 Then _
             Characters(PLAYER).Y = PlayerY - 1
         If KeyPressed(DownCode) And PlayerY < MapHeight - 1 Then _
@@ -383,18 +413,69 @@ Do
             Characters(PLAYER).X = PlayerX - 1
         If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
             Characters(PLAYER).X = PlayerX + 1
-        If KeyPressed(Asc("m")) Then Mode = GAME_MODE
+
+        ' Edit the map if a number key was pressed
+        For I = 0 To 9
+            If KeyPressed(Asc("0") + I) Then
+                Map(PlayerX, PlayerY) = SelectedMapTiles(I + 1)
+                RenderMapTile PlayerX, PlayerY
+            EndIf
+        Next
+
+        ' Render the map onto the game boy's screen
+        RenderMap
+
+        ' Draw the map tiles currently selected for use with number keys
+        ' 0-9 at the bottom of the screen
+        RenderSelectedMapTiles
+
+        ' Maybe switch to a different mode
+        If KeyPressed(Asc("m")) Or KeyPressed(EnterCode) Then _
+            Mode = GAME_MODE
         If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
         If KeyPressed(Asc("c")) Then Mode = MAP_SCROLL_MODE
         If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
     ElseIf Mode = MAP_SCROLL_MODE Then
+        RenderMap
         HandleMapScrollMode
-        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+        If KeyPressed(Asc("c")) Or KeyPressed(EnterCode) Then _
+            Mode = MAP_EDITOR_MODE
     ElseIf Mode = MAP_RESIZE_MODE Then
+        RenderMap
         HandleMapResizeMode
-        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+        If KeyPressed(Asc("r")) Or KeyPressed(EnterCode) Then _
+            Mode = MAP_EDITOR_MODE
     ElseIf Mode = TILE_SELECTOR_MODE Then
-        If KeyPressed(EnterCode) Then Mode = MAP_EDITOR_MODE
+        ' Change the currently selected map tile
+        If KeyPressed(UpCode) Then SelectedMapTileNumber = _
+            SelectedMapTileNumber - TileSelectorWidth
+        If KeyPressed(DownCode) Then SelectedMapTileNumber = _
+            SelectedMapTileNumber + TileSelectorWidth
+        If KeyPressed(LeftCode) Then SelectedMapTileNumber = _
+            SelectedMapTileNumber - 1
+        If KeyPressed(RightCode) Then SelectedMapTileNumber = _
+            SelectedMapTileNumber + 1
+        If SelectedMapTileNumber < 0 Then SelectedMapTileNumber = 0
+        If SelectedMapTileNumber >= NumMapTiles Then _
+            SelectedMapTileNumber = NumMapTiles - 1
+
+        ' Render all map tiles as a grid
+        RenderMapTiles
+
+        ' Draw the map tiles currently selected for use with number keys
+        ' 0-9 at the bottom of the screen
+        RenderSelectedMapTiles
+
+        ' Select map tiles using the number keys
+        For I = 0 To 9
+            If KeyPressed(Asc("0") + I) Then
+                SelectedMapTiles(I + 1) = SelectedMapTileNumber
+            EndIf
+        Next
+
+        ' Change modes
+        If KeyPressed(Asc("t")) Or KeyPressed(EnterCode) Then _
+            Mode = MAP_EDITOR_MODE
     Else
         Die "Unknown mode: " + Mode
     End If
@@ -637,6 +718,15 @@ Sub WriteText(Text As String)
     Next
 End Sub
 
+Sub RenderSelectionBox(X As Long, Y As Long, Width As Long, Height As Long)
+    ' Draw a box representing the user's selection of something.
+
+    ' White box, closer in
+    Line (X - 1, Y - 1)-(X + Width, Y + Height), _RGB(255, 255, 255), B
+    ' Black box, further out
+    Line (X - 2, Y - 2)-(X + Width + 1, Y + Height + 1), _RGB(0, 0, 0), B
+End Sub
+
 Sub Die(Message As String)
     _Dest 0 ' Print to the screen
     Cls ' Clear the screen
@@ -718,6 +808,8 @@ Sub LoadMapTiles
     If ParsingBottom Then
         Die "Hit end of file while still parsing map tile" + Str$(I)
     End If
+
+    NumMapTiles = I
 End Sub
 
 Sub LoadMap(Filename As String)
@@ -820,36 +912,42 @@ Function MapHasPokemonAt(X As Long, Y As Long)
     MapHasPokemonAt = MapTiles(Map(X, Y)).HasPokemon
 End Function
 
-' Render a map tile, that is, a 2x2 square of tiles
 Sub RenderMapTile(X As Long, Y As Long)
-    Dim MapTile As MapTile
-    MapTile = MapTiles(Map(X, Y))
+    ' Render one of the map's tiles onto the MapImage
+    _Dest MapImage
+    RenderMapTileAt MapTiles(Map(X, Y)), X, Y, 0, 0
+End Sub
 
+' Render a map tile, that is, a 2x2 square of tiles, onto the indicated image
+Sub RenderMapTileAt(MapTile As MapTile, X As Long, Y As Long, _
+    ExtraX As Long, ExtraY As Long _
+)
     ' Number encoding an (X, Y) coordinate into the map's tileset
     Dim XY As Long
-
-    ' Render tiles onto MapImage
-    _Dest MapImage
 
     ' Top-left tile
     XY = MapTile.TL
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 0, 0, 0
+        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 0, _
+        ExtraX, ExtraY
 
     ' Top-right tile
     XY = MapTile.TR
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 0, 0, 0
+        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 0, _
+        ExtraX, ExtraY
 
     ' Bottom-left tile
     XY = MapTile.BL
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 1, 0, 0
+        XY Mod 16, Int(XY / 16), X * 2 + 0, Y * 2 + 1, _
+        ExtraX, ExtraY
 
     ' Bottom-right tile
     XY = MapTile.BR
     RenderTile MapTilesets(MapTilesetNumber), _
-        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 1, 0, 0
+        XY Mod 16, Int(XY / 16), X * 2 + 1, Y * 2 + 1, _
+        ExtraX, ExtraY
 End Sub
 
 Sub RenderMapImage
@@ -879,6 +977,74 @@ Sub RenderMap
             MapScrollY + MapHeight * MapTileHeight - 1 _
         ), _
         MapImage, ScreenImage
+
+    If Mode = MAP_EDITOR_MODE Then
+        ' Render a "selection box" around the tile at the current map location
+        _Dest ScreenImage
+        RenderSelectionBox _
+            MapScrollX + PlayerX * MapTileWidth, _
+            MapScrollY + PlayerY * MapTileHeight, _
+            MapTileWidth, MapTileHeight
+    End If
+End Sub
+
+Sub RenderMapTiles
+    ' Called when Mode = TILE_SELECTOR_MODE.
+    ' Render all map tiles as a grid for the user to select from.
+
+    Dim X As Long, Y As Long, I As Long
+    Const ExtraX = 16
+    Const ExtraY = 16
+
+    _Dest ScreenImage
+
+    ' Draw all map tiles as a grid
+    For I = 0 To NumMapTiles - 1
+        X = I Mod TileSelectorWidth
+        Y = Int(I / TileSelectorWidth)
+        RenderMapTileAt MapTiles(I), X, Y, ExtraX, ExtraY
+    Next
+
+    ' Draw a box around the selected map tile
+    X = SelectedMapTileNumber Mod TileSelectorWidth
+    Y = Int(SelectedMapTileNumber / TileSelectorWidth)
+    RenderSelectionBox X * MapTileWidth + ExtraX, Y * MapTileHeight + ExtraY, _
+        MapTileWidth, MapTileHeight
+End Sub
+
+Sub RenderSelectedMapTiles
+    ' Draw the map tiles currently selected for use with number keys 0-9
+    ' at the bottom of the screen
+    Dim X As Long, Y As Long, I As Long
+    Const ExtraX = 0
+    Const ExtraY = TrueScreenHeight - MapTileHeight - 1
+    _Dest ScreenImage
+    For I = 1 To 10
+        X = (I - 2 + 10) Mod 10 ' Causes 1 to be at left, 0 at right
+        Y = 0
+        RenderMapTileAt MapTiles(SelectedMapTiles(I)), _
+            X, Y, ExtraX, ExtraY
+    Next
+    RenderSelectionBox ExtraX, ExtraY, TrueScreenWidth, MapTileHeight
+End Sub
+
+Sub RenderTileset
+    ' Copy the current tileset onto the game boy's screen
+
+    Dim Tileset As Tileset
+    Tileset = MapTilesets(MapTilesetNumber)
+
+    Dim X As Long, Y As Long, Width As Long, Height As Long
+    X = 16
+    Y = 16
+    Width = 16 * TileWidth
+    Height = 6 * TileHeight
+
+    _PutImage (X, Y), Tileset.Image, ScreenImage, _
+        (Tileset.StartX, Tileset.StartY) - ( _
+            Tileset.StartX + Width - 1, _
+            Tileset.StartY + Height - 1 _
+        )
 End Sub
 
 Sub RenderScreen

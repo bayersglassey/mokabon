@@ -48,7 +48,7 @@
         are the small ones.
         So now, the elements of Maptiles should presumably be of type
         Maptile.
-[ ] Implement map editor
+[X] Implement map editor
     [X] Map tile selector: show current map's tiles, arrow keys to
         move around, press number keys 0-9 to assign tiles to them.
         Press "T" to enter/exit the tile selector.
@@ -60,7 +60,7 @@
     [X] Scroll the map with wrapping ("X"?..)
     [X] Exit back to "player mode" where you walk around (press "M"?)
     [X] Map editor and tile selector should have their own help texts ("H")
-    [ ] Set an "anchor point", then move around, the "selection box" should
+    [X] Set an "anchor point", then move around, the "selection box" should
         be a rectangle around both the anchor point and your current position,
         and when you press 0-9, it should fill that rectangle.
         Set/remove anchor point with "A".

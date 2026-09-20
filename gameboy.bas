@@ -136,6 +136,15 @@ Dim Shared WriteY As Long
 Dim Shared ParseText As String
 Dim Shared Token As String
 
+' General-purpose global variables for subroutines to return information
+' about rectangles into.
+' Top-left corner is (RectangleX1, RectangleY1)
+' Bottom-left corner is (RectangleX2, RectangleY2)
+Dim Shared RectangleX1 As Long
+Dim Shared RectangleY1 As Long
+Dim Shared RectangleX2 As Long
+Dim Shared RectangleY2 As Long
+
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO THE MAP
@@ -220,6 +229,10 @@ Dim Shared NumMapTiles As Long
 Dim Shared MapWidth As Long
 Dim Shared MapHeight As Long
 ReDim Shared Map(MapWidth - 1, MapHeight - 1) As Long
+
+' The "anchor point" in the map editor
+Dim Shared MapEditorAnchorX As Long
+Dim Shared MapEditorAnchorY As Long
 
 
 ' #################################################################
@@ -358,11 +371,14 @@ Do
     _Dest ScreenImage
     Cls
 
-    Dim I As Long
+    Dim X As Long, Y As Long, I As Long
 
     ' Mode-specific behaviour
     If Mode = GAME_MODE Then
-        If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
+        If KeyPressed(Asc("m")) Then
+            Mode = MAP_EDITOR_MODE
+            MapEditorAnchorX = -1 ' Anchor starts off unset
+        End If
 
         ' Render the map onto the game boy's screen
         RenderMap
@@ -414,11 +430,29 @@ Do
         If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
             Characters(PLAYER).X = PlayerX + 1
 
+        ' Set/unset the "anchor point"
+        If KeyPressed(Asc("a")) Then
+            If MapEditorAnchorX < 0 Then
+                ' Set the anchor point to player's current location
+                MapEditorAnchorX = PlayerX
+                MapEditorAnchorY = PlayerY
+            Else
+                ' Unset the anchor point if it's already at player's current
+                ' location
+                MapEditorAnchorX = -1
+            End If
+        End If
+
         ' Edit the map if a number key was pressed
+        UpdateMapEditorAnchorRectangle
         For I = 0 To 9
             If KeyPressed(Asc("0") + I) Then
-                Map(PlayerX, PlayerY) = SelectedMapTiles(I + 1)
-                RenderMapTile PlayerX, PlayerY
+                For X = RectangleX1 To RectangleX2
+                    For Y = RectangleY1 To RectangleY2
+                        Map(X, Y) = SelectedMapTiles(I + 1)
+                        RenderMapTile X, Y
+                    Next
+                Next
             EndIf
         Next
 
@@ -1003,6 +1037,31 @@ Sub RenderMapImage
     Next
 End Sub
 
+Sub UpdateMapEditorAnchorRectangle
+    Dim Temp As Long
+    RectangleX1 = PlayerX
+    RectangleY1 = PlayerY
+    If MapEditorAnchorX < 0 Then
+        ' Anchor is unset
+        RectangleX2 = RectangleX1
+        RectangleY2 = RectangleY1
+    Else
+        ' Anchor is set
+        RectangleX2 = MapEditorAnchorX
+        RectangleY2 = MapEditorAnchorY
+        If RectangleX1 > RectangleX2 Then
+            Temp = RectangleX2
+            RectangleX2 = RectangleX1
+            RectangleX1 = Temp
+        End If
+        If RectangleY1 > RectangleY2 Then
+            Temp = RectangleY2
+            RectangleY2 = RectangleY1
+            RectangleY1 = Temp
+        End If
+    End If
+End Sub
+
 Sub RenderMap
     ' Copy the map onto the game boy's screen
 
@@ -1023,10 +1082,12 @@ Sub RenderMap
     If Mode = MAP_EDITOR_MODE Then
         ' Render a "selection box" around the tile at the current map location
         _Dest ScreenImage
+        UpdateMapEditorAnchorRectangle
         RenderSelectionBox _
-            MapScrollX + PlayerX * MapTileWidth, _
-            MapScrollY + PlayerY * MapTileHeight, _
-            MapTileWidth, MapTileHeight
+            MapScrollX + RectangleX1 * MapTileWidth, _
+            MapScrollY + RectangleY1 * MapTileHeight, _
+            (RectangleX2 - RectangleX1 + 1) * MapTileWidth, _
+            (RectangleY2 - RectangleY1 + 1) * MapTileHeight
     End If
 End Sub
 

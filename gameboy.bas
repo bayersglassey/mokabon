@@ -593,20 +593,21 @@ Sub PrintHelp
     ElseIf Mode = MAP_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: place tile"
+        Print " A: set/unset anchor point"
         Print " T: enter tile selection mode"
         Print " C: enter map scroll mode"
         Print " R: enter map resize mode"
-        Print " M: exit map editor mode"
+        Print " M or Enter: exit map editor mode"
     ElseIf Mode = MAP_SCROLL_MODE Then
         Print " Arrow keys: scroll the map"
-        Print " Enter: exit map scroll mode"
+        Print " C or Enter: exit map scroll mode"
     ElseIf Mode = MAP_RESIZE_MODE Then
         Print " Arrow keys: resize the map"
-        Print " Enter: exit map resize mode"
+        Print " R or Enter: exit map resize mode"
     ElseIf Mode = TILE_SELECTOR_MODE Then
         Print " Arrow keys: move"
-        Print " 0-9: place tile"
-        Print " Enter: exit tile selection mode"
+        Print " 0-9: choose tile"
+        Print " T or Enter: exit tile selection mode"
     Else
         Die "Unknown mode: " + Mode
     End If

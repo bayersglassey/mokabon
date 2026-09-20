@@ -64,6 +64,11 @@
         be a rectangle around both the anchor point and your current position,
         and when you press 0-9, it should fill that rectangle.
         Set/remove anchor point with "A".
+[X] Update help text
+    [X] Mention "A" for set/unset anchor point
+    [X] Mention Enter also going back from tile selection
+        to map editor, map editor to game, etc
+    [X] Fix tile selector's help text, it says "place tile"
 [X] Implement player
     [X] Walk around
     [X] Jump over fences

@@ -20,40 +20,51 @@ position  5  7
 
 character
     start_y  7 
-    position  4  6 
     facing d
+    position  4  6 
     talk
-        say My name is JIMBERT.
+        say Hello! My name is JIMBERT.
         walk d 3 
-        wait  5 
+        wait  10 
         face u
-        wait  5 
-        say was nice to talk to you...
+        wait  10 
+        say T'was was nice to talk to you...
+        talk  2 
+    end
+    talk2
+        say Back I go!..
+        walk u 3 
+        wait  10 
+        face d
+        talk  1 
     end
 end
 
 character
     pokemon
     start_y  0 
-    position  5  10 
     facing r
+    position  5  10 
     script
         wait  30 
         walk r 1 
-        walk r
+        jump r
         walk r 1 
         wait  30 
         walk l 1 
-        walk l
+        jump l
         walk l 1 
+    end
+    talk
+        say SQUAWK!
     end
 end
 
 character
     pokemon
     start_y  1 
-    position  12  10 
     facing l
+    position  12  10 
     script
         face u
         wait  10 
@@ -63,6 +74,9 @@ character
         wait  10 
         face l
         wait  10 
+    end
+    talk
+        say PIKA PIKA!
     end
 end
 

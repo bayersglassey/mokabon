@@ -69,9 +69,9 @@
     [X] Jump over fences
     [X] Switch to map editor mode (press "M"?)
     [X] Remember to update the help text ("H")!..
-[ ] Implement scripts
-    [ ] Character scripts (walking around, etc)
-    [ ] Talking scripts
+[X] Implement scripts
+    [X] Character scripts (walking around, etc)
+    [X] Talking scripts
 [ ] Implement tileset-based menus
     [ ] Scripts displaying text with a "next" button, like a character
         is talking to you
@@ -120,3 +120,5 @@
     [X] Fix tile selector's help text, it says "place tile"
 [X] Add Character fields: StartX, StartY, StartFacing.
     Used for saving/loading.
+[ ] RenderTextBox should draw a nice border around its text, at the
+    bottom of the screen.

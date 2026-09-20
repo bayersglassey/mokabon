@@ -157,6 +157,7 @@ Const COMMAND_WALK = 1
 Const COMMAND_JUMP = 2
 Const COMMAND_FACE = 3
 Const COMMAND_SAY = 4
+Const COMMAND_TALK = 5
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -166,13 +167,13 @@ Type ScriptCommand
 End Type
 
 Type Script
+    CharacterNumber As Long ' Index into Characters
     Start As Long ' Index into ScriptCommands
     Length As Long ' Number of commands in this script
 End Type
 
 Type ScriptState
-    Script As Script
-    CharacterNumber As Long ' Index into Characters
+    ScriptNumber As Long
     CommandNumber As Long ' Between 1 and Script.Length
     Frame As Long ' Frame of animation for current command
 End Type
@@ -184,7 +185,8 @@ ReDim Shared ScriptStates(1) As ScriptState
 ' If we're currently talking to someone, Talking = True, and the state of
 ' the script for that conversation is ScriptStates(TALKING_SCRIPT_STATE).
 Const TALKING_SCRIPT_STATE = 1
-Dim Talking As Integer
+Dim Shared Talking As Integer
+Dim Shared TalkingText As String
 Talking = False
 
 
@@ -363,9 +365,15 @@ Type Character
     ' Determines whether left or right foot is used by the walking animation.
     OtherFoot As Integer
 
+    ' Index into ScriptStates
+    ScriptStateNumber As Long
+
     ' Indexes into Scripts
-    ScriptNumber As Long
     TalkScriptNumber As Long
+    TalkScriptNumber2 As Long
+
+    ' Indicates whether TalkScriptNumber or TalkScriptNumber2 should be used.
+    TalkState As Integer
 
     ' Starting values for other character fields, set when the map is loaded,
     ' and used when the map is saved.
@@ -429,8 +437,29 @@ Do
     Dim X As Long, Y As Long, I As Long
     Dim NewX As Long, NewY As Long
 
+    If Mode = GAME_MODE And Talking Then
+        If ScriptStateDone(TALKING_SCRIPT_STATE) Then Talking = False
+    End If
+
     ' Mode-specific behaviour
-    If Mode = GAME_MODE Then
+    If Mode = GAME_MODE And Talking Then
+        ' We're talking to another character, so pause the game while we
+        ' run the talk script...
+
+        If TalkingText <> "" And KeyPressed(Asc("z")) Then TalkingText = ""
+
+        If TalkingText = "" Then
+            UpdateScriptState TALKING_SCRIPT_STATE
+            HandleCharacterAnimation _
+                Scripts(TALKING_SCRIPT_STATE).CharacterNumber
+        End If
+
+        RenderMap
+        For I = 1 To UBound(Characters)
+            RenderCharacter I
+        Next
+        If TalkingText <> "" Then RenderTextBox TalkingText
+    ElseIf Mode = GAME_MODE Then
         If KeyPressed(Asc("m")) Then
             Mode = MAP_EDITOR_MODE
             MapEditorAnchorX = -1 ' Anchor starts off unset
@@ -469,16 +498,13 @@ Do
                 NewX = PlayerX + FacingAddX(Characters(Player).Facing)
                 NewY = PlayerY + FacingAddY(Characters(Player).Facing)
                 I = CollideCharacters(NewX, NewY, PLAYER)
-                If I Then
-                    ' We're talking to another character!..
-                    ' Get them to face us.
-                    Characters(I).Facing = _
-                        (Characters(PLAYER).Facing + 2) Mod 4
-                    If Characters(I).TalkScriptNumber Then
-                        Talking = True
-                        SetScriptState TALKING_SCRIPT_STATE, _
-                            Characters(I).TalkScriptNumber, _
-                            I
+                If I > 0 Then
+                    If Characters(I).State = STATE_STANDING Then
+                        ' We're talking to another character!..
+                        ' Get them to face us, and attempt to talk to them.
+                        Characters(I).Facing = _
+                            (Characters(PLAYER).Facing + 2) Mod 4
+                        TalkToCharacter I
                     End If
                 End If
             End If
@@ -486,7 +512,14 @@ Do
 
         ' Update all characters
         For I = 1 To UBound(Characters)
-            If Characters(I).State <> STATE_GONE Then HandleCharacterAnimation I
+            If Characters(I).ScriptStateNumber Then
+                UpdateScriptState Characters(I).ScriptStateNumber
+                ' Loop the script forever
+                If ScriptStateDone(Characters(I).ScriptStateNumber) Then _
+                    ScriptStates(Characters(I).ScriptStateNumber) _
+                        .CommandNumber = 1
+            End If
+            HandleCharacterAnimation I
         Next
 
         ' Render the map onto the game boy's screen
@@ -494,7 +527,7 @@ Do
 
         ' Render all characters
         For I = 1 To UBound(Characters)
-            If Characters(I).State <> STATE_GONE Then RenderCharacter I
+            RenderCharacter I
         Next
     ElseIf Mode = MAP_EDITOR_MODE Then
         ' Move the player with the arrow keys; in map editor mode, the
@@ -1000,12 +1033,18 @@ Sub WriteCharacter(I As Long, File As Long)
     Print #File, "character"
     If Characters(I).IsPokemon Then Print #File, "    pokemon"
     Print #File, "    start_y "; Characters(I).TileStartY
-    Print #File, "    position "; Characters(I).StartX; Characters(I).StartY
     Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
-    If Characters(I).ScriptNumber > 0 Then _
-        WriteScript File, Scripts(Characters(I).ScriptNumber), "script"
+    Print #File, "    position "; Characters(I).StartX; Characters(I).StartY
+    If Characters(I).ScriptStateNumber > 0 Then _
+        WriteScript File, _
+            Scripts( _
+                ScriptStates(Characters(I).ScriptStateNumber).ScriptNumber _
+            ), _
+            "script"
     If Characters(I).TalkScriptNumber > 0 Then _
         WriteScript File, Scripts(Characters(I).TalkScriptNumber), "talk"
+    If Characters(I).TalkScriptNumber2 > 0 Then _
+        WriteScript File, Scripts(Characters(I).TalkScriptNumber2), "talk2"
     Print #File, "end"
 End Sub
 
@@ -1135,11 +1174,17 @@ Sub ParseCharacter(File As Long)
             NextToken
             Characters(I).Y = Val(Token)
         ElseIf Token = "script" Then
-            ParseScript File
-            Characters(I).ScriptNumber = UBound(Scripts)
+            ParseScript File, I
+            ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
+                As ScriptState
+            SetScriptState UBound(ScriptStates), UBound(Scripts)
+            Characters(I).ScriptStateNumber = UBound(ScriptStates)
         ElseIf Token = "talk" Then
-            ParseScript File
+            ParseScript File, I
             Characters(I).TalkScriptNumber = UBound(Scripts)
+        ElseIf Token = "talk2" Then
+            ParseScript File, I
+            Characters(I).TalkScriptNumber2 = UBound(Scripts)
         ElseIf Token = "end" Then
             Exit Do
         End If
@@ -1399,6 +1444,8 @@ Function FacingAddY(Facing As Long)
 End Function
 
 Sub HandleCharacterAnimation(I As Long)
+    If Characters(I).State = STATE_GONE Then Exit Sub
+
     Dim State As Long, Facing As Long
     State = Characters(I).State
     Facing = Characters(I).Facing
@@ -1464,6 +1511,8 @@ End Sub
 Sub RenderCharacter(I As Long)
     ' Draw Characters(I) onto the game boy's screen
 
+    If Characters(I).State = STATE_GONE Then Exit Sub
+
     _Dest ScreenImage
 
     Dim Character As Character
@@ -1472,6 +1521,14 @@ Sub RenderCharacter(I As Long)
     Dim TileX As Long, TileY As Long
     TileX = Character.TileStartX + Character.TileAddX
     TileY = Character.TileStartY + Character.TileAddY
+
+    ' HACK: the bird pokemon character's left and right walking frames are
+    ' in the wrong order in the tilesheet, we fix them here...
+    If Character.IsPokemon And Character.TileStartY = 0 Then
+        If Character.TileAddX >= 6 Then
+            TileX = TileX - ((TileX Mod 2) * 2 - 1)
+        End If
+    End If
 
     ' The location in pixels to render the character at
     Dim X As Long
@@ -1534,7 +1591,7 @@ Function AddScriptCommand(CommandType As Integer)
     AddScriptCommand = UBound(ScriptCommands)
 End Function
 
-Sub ParseScript(File As Long)
+Sub ParseScript(File As Long, CharacterNumber As Long)
     Dim I As Long
     Dim Start As Long
     Dim Script As Script
@@ -1560,19 +1617,25 @@ Sub ParseScript(File As Long)
             I = AddScriptCommand(COMMAND_JUMP)
             NextToken
             ScriptCommands(I).Num1 = ParseFacing(Token)
+            ScriptCommands(I).Num2 = 1 ' Jump once per command
         ElseIf Token = "face" Then
             I = AddScriptCommand(COMMAND_FACE)
             NextToken
             ScriptCommands(I).Num1 = ParseFacing(Token)
         ElseIf Token = "say" Then
             I = AddScriptCommand(COMMAND_SAY)
-            NextToken
             ScriptCommands(I).Str1 = ParseText
+        ElseIf Token = "talk" Then
+            I = AddScriptCommand(COMMAND_TALK)
+            NextToken
+            ScriptCommands(I).Num1 = Val(Token) - 1
         ElseIf Token = "end" Then
             Exit Do
         End If
     Loop
 
+    ' Set script fields
+    Script.CharacterNumber = CharacterNumber
     Script.Start = Start
     Script.Length = UBound(ScriptCommands) - (Start - 1)
 
@@ -1592,11 +1655,13 @@ Sub WriteScript(File As Long, Script As Script, ScriptType As String)
         ElseIf Command.CommandType = COMMAND_WALK Then
             Print #File, "        walk "; FacingStr$(Command.Num1); Command.Num2
         ElseIf Command.CommandType = COMMAND_JUMP Then
-            Print #File, "        walk "; FacingStr$(Command.Num1)
+            Print #File, "        jump "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_FACE Then
             Print #File, "        face "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_SAY Then
             Print #File, "        say "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_TALK Then
+            Print #File, "        talk "; Command.Num1 + 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -1617,9 +1682,138 @@ Function CollideCharacters(X As Long, Y As Long, IgnoreCharacter As Long)
     Next
 End Function
 
-Sub SetScriptState(StateNumber As Long, ScriptNumber As Long, CharacterNumber As Long)
-    ScriptStates(StateNumber).Script = Scripts(ScriptNumber)
-    ScriptStates(StateNumber).CharacterNumber = CharacterNumber
+Sub SetScriptState(StateNumber As Long, ScriptNumber As Long)
+    ScriptStates(StateNumber).ScriptNumber = ScriptNumber
     ScriptStates(StateNumber).CommandNumber = 1
     ScriptStates(StateNumber).Frame = 0
+End Sub
+
+Function ScriptStateDone(StateNumber As Long)
+    Dim State As ScriptState
+    State = ScriptStates(StateNumber)
+    ScriptStateDone = State.CommandNumber > Scripts(State.ScriptNumber).Length
+End Function
+
+Sub UpdateScriptState(StateNumber As Long)
+    ' NOTE: caller guarantees Not ScriptStateDone(StateNumber)!
+
+    Dim I As Long
+    Dim Script As Script
+    Dim State As ScriptState
+    Dim Command As ScriptCommand
+    State = ScriptStates(StateNumber)
+    Script = Scripts(State.ScriptNumber)
+
+    Do
+        TalkingText = ""
+
+        If State.CommandNumber > Script.Length Then Exit Do
+
+        ' Wait for character's current animation to complete, before doing
+        ' any script actions
+        If Characters(Script.CharacterNumber).State <> STATE_STANDING _
+            Then Exit Do
+
+        Command = ScriptCommands(Script.Start + State.CommandNumber - 1)
+        If Command.CommandType = COMMAND_WAIT Then
+            If State.Frame >= Command.Num1 Then
+                ' Done waiting!..
+                State.CommandNumber = State.CommandNumber + 1
+                State.Frame = 0
+            Else
+                ' Wait some more...
+                State.Frame = State.Frame + 1
+                Exit Do
+            End If
+        ElseIf _
+            Command.CommandType = COMMAND_WALK Or _
+            Command.CommandType = COMMAND_JUMP _
+        Then
+            If State.Frame >= Command.Num2 Then
+                ' Done walking/jumping!..
+                State.CommandNumber = State.CommandNumber + 1
+                State.Frame = 0
+            Else
+                ' Walk/jump some more...
+                I = Script.CharacterNumber
+                Characters(I).Facing = Command.Num1
+                Dim Multiplier As Long
+                If Command.CommandType = COMMAND_JUMP Then
+                    Multiplier = 2
+                    Characters(I).State = STATE_JUMPING
+                Else
+                    Multiplier = 1
+                    Characters(I).State = STATE_WALKING
+                End If
+                Characters(I).X = Characters(I).X + _
+                    FacingAddX(Command.Num1) * Multiplier
+                Characters(I).Y = Characters(I).Y + _
+                    FacingAddY(Command.Num1) * Multiplier
+                State.Frame = State.Frame + 1
+                Exit Do
+            End If
+        ElseIf Command.CommandType = COMMAND_FACE Then
+            Characters(Script.CharacterNumber).Facing = Command.Num1
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_SAY Then
+            If State.Frame = 1 Then
+                ' Done talking
+                State.CommandNumber = State.CommandNumber + 1
+                State.Frame = 0
+            Else
+                ' Talk some more...
+                TalkingText = Command.Str1
+                State.Frame = State.Frame + 1
+                Exit Do
+            End If
+        ElseIf Command.CommandType = COMMAND_TALK Then
+            Characters(Script.CharacterNumber).TalkState = Command.Num1
+            State.CommandNumber = State.CommandNumber + 1
+        Else
+            Die "Unknown command type: " + Str$(Command.CommandType)
+        End If
+    Loop
+
+    ' Copy any state updates we've made back into the array of states
+    ScriptStates(StateNumber) = State
+End Sub
+
+Sub TalkToCharacter(I As Long)
+    Dim TalkScriptNumber As Long
+    If Characters(I).TalkState = 0 Then
+        TalkScriptNumber = Characters(I).TalkScriptNumber
+    ElseIf Characters(I).TalkState = 1 Then
+        TalkScriptNumber = Characters(I).TalkScriptNumber2
+    Else
+        Die "Weird talk state: " + Str$(Characters(I).TalkState)
+    End If
+    If TalkScriptNumber Then
+        Talking = True
+        SetScriptState TALKING_SCRIPT_STATE, TalkScriptNumber
+    End If
+End Sub
+
+Sub RenderTextBox(FullText As String)
+    _Dest ScreenImage
+
+    ' It looks like if we assign to a String-typed parameter, the underlying
+    ' string is actually modified!.. O_o
+    ' So... strings in QB64 are pass-by-reference?!..
+    Dim Text As String
+    Text = FullText
+
+    ' TODO: render a nice text box at bottom of screen!
+    ' For now, we just dump the text at the top, with no border...
+
+    Const TextWidth = 16
+    Dim I As Long
+    Dim AddY As Long
+    I = 1
+    AddY = 0
+    While Len(Text) > 0
+        WriteAt 0, AddY
+        WriteText Mid$(Text, 1, TextWidth)
+        Text = Mid$(Text, TextWidth + 1)
+        AddY = AddY + 1
+    Wend
 End Sub

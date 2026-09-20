@@ -84,6 +84,7 @@
         the list of items, your pokemon, etc
 [ ] Implement characters
     [X] They appear on the map, are animated, etc. The player is one!
+    [X] The map includes a list of characters
     [ ] Some of them should be shop owners, so you can buy items...
     [ ] Some of them should heal your pokemon...
 [ ] Implement items (lying on the ground, they look like pokeballs)

@@ -136,6 +136,9 @@ Dim Shared WriteY As Long
 Dim Shared ParseText As String
 Dim Shared Token As String
 
+' Used by parsing subroutines
+Dim Shared LineNumber As Long
+
 ' General-purpose global variables for subroutines to return information
 ' about rectangles into.
 ' Top-left corner is (RectangleX1, RectangleY1)
@@ -380,9 +383,6 @@ Do
             MapEditorAnchorX = -1 ' Anchor starts off unset
         End If
 
-        ' Render the map onto the game boy's screen
-        RenderMap
-
         ' Handle player's controls, that is, react to keys the player
         ' is pressing
         If Characters(PLAYER).State = STATE_STANDING Then
@@ -415,6 +415,13 @@ Do
         ' Update all characters
         For I = 1 To UBound(Characters)
             HandleCharacterAnimation I
+        Next
+
+        ' Render the map onto the game boy's screen
+        RenderMap
+
+        ' Render all characters
+        For I = 1 To UBound(Characters)
             RenderCharacter I
         Next
     ElseIf Mode = MAP_EDITOR_MODE Then
@@ -794,6 +801,17 @@ End Sub
 
 Sub Parse(Text As String)
     ParseText = Text
+
+    ' Strip spaces from the beginning of the line
+    Dim I As Long
+    I = 1
+    While Mid$(ParseText, I, 1) = " "
+        I = I + 1
+    Wend
+    ParseText = Mid$(ParseText, I)
+
+    ' Parse the first token right away
+    NextToken
 End Sub
 
 Sub NextToken
@@ -804,7 +822,7 @@ Sub NextToken
         J = J + 1
     Wend
     If I > 0 Then
-        Token = Left$(ParseText, I)
+        Token = Left$(ParseText, I - 1)
         ParseText = Mid$(ParseText, J)
     Else
         Token = ParseText
@@ -817,7 +835,6 @@ Sub LoadMapTiles
     Dim Filename As String
     Dim File As Long
     Dim Text As String
-    Dim LineNumber As Long
     Dim ParsingBottom As Long
 
     ' E.g. "tilesets/0.txt"
@@ -826,6 +843,8 @@ Sub LoadMapTiles
     ' Index into MapTiles
     Dim I As Long
     I = 0
+
+    LineNumber = 0
 
     File = FreeFile
     Open Filename For Input As File
@@ -872,11 +891,12 @@ Sub LoadMapTiles
 End Sub
 
 Sub SaveMap(Filename As String)
-    Dim X As Long, Y As Long
+    Dim I As Long, X As Long, Y As Long
     Dim File As Long
     File = FreeFile
     Open Filename For Output As File
         Print #File, "tileset "; MapTilesetNumber
+        Print #File, ""
 
         Print #File, "tiles "; MapWidth; " "; MapHeight
         For Y = 0 To MapHeight - 1
@@ -886,33 +906,73 @@ Sub SaveMap(Filename As String)
             Next
             Print #File, ""
         Next
+        Print #File, ""
+
+        Print #File, "position "; PlayerX; PlayerY
+        Print #File, ""
+
+        For I = PLAYER + 1 To UBound(Characters)
+            WriteCharacter I, File
+            Print #File, ""
+        Next
     Close File
 End Sub
+
+Sub WriteCharacter(I As Long, File As Long)
+    Print #File, "character"
+    If Characters(I).IsPokemon Then Print #File, "    pokemon"
+    Print #File, "    start_y "; Characters(I).TileStartY
+    Print #File, "    position "; Characters(I).X; Characters(I).Y
+    Print #File, "    facing "; FacingStr$(Characters(I).Facing)
+    Print #File, "end"
+End Sub
+
+Function ParseFacing(Char As String)
+    If Char = "u" Then
+        ParseFacing = FACING_UP
+    ElseIf Char = "d" Then
+        ParseFacing = FACING_DOWN
+    ElseIf Char = "l" Then
+        ParseFacing = FACING_LEFT
+    ElseIf Char = "r" Then
+        ParseFacing = FACING_RIGHT
+    Else
+        Die "Can't parse as direction: [" + Char + "]"
+    End If
+End Function
+
+Function FacingStr$(Facing As Long)
+    If Facing = FACING_UP Then FacingStr$ = "u"
+    If Facing = FACING_DOWN Then FacingStr$ = "d"
+    If Facing = FACING_LEFT Then FacingStr$ = "l"
+    If Facing = FACING_RIGHT Then FacingStr$ = "r"
+End Function
 
 Sub LoadMap(Filename As String)
     Dim File As Long
     Dim Text As String
-    Dim LineNumber As Long
     Dim X As Long
     Dim Y As Long
 
+    LineNumber = 0
     MapTilesetNumber = 0
+
+    ReDim _Preserve Characters(1) As Character
+
+    InitializeCharacter PLAYER
 
     File = FreeFile
     Open Filename For Input As File
     Do Until Eof(File)
         Line Input #File, Text
+        Parse Text
         LineNumber = LineNumber + 1
         If Text = "" Or Left$(Text, 1) = "#" Then
             ' Empty line or comment, ignore it!
-        ElseIf Left$(Text, 7) = "tileset" Then
-            Parse Text
-            NextToken ' ignore "tileset"
+        ElseIf Token = "tileset" Then
             NextToken
             MapTilesetNumber = Val(Token)
-        ElseIf Left$(Text, 5) = "tiles" Then
-            Parse Text
-            NextToken ' ignore "tiles"
+        ElseIf Token = "tiles" Then
             NextToken
             MapWidth = Val(Token)
             NextToken
@@ -924,11 +984,26 @@ Sub LoadMap(Filename As String)
             For Y = 0 To MapHeight - 1
                 Line Input #File, Text
                 Parse Text
+                LineNumber = LineNumber + 1
                 For X = 0 To MapWidth - 1
-                    NextToken
                     Map(X, Y) = Val("&H" + Token)
+                    NextToken
                 Next
             Next
+
+            ' Reset the character: they are now standing in the middle of the map.
+            Characters(PLAYER).X = MapWidth / 2
+            Characters(PLAYER).Y = MapHeight / 2
+        ElseIf Token = "position" Then
+            NextToken
+            Characters(PLAYER).X = Val(Token)
+            NextToken
+            Characters(PLAYER).Y = Val(Token)
+        ElseIf Token = "facing" Then
+            NextToken
+            Characters(PLAYER).Facing = ParseFacing(Token)
+        ElseIf Token = "character" Then
+            ParseCharacter File
         Else
             Die "Don't know what to do with line" + Str$(LineNumber) _
                 + ": [" + Text + "]"
@@ -938,15 +1013,45 @@ Sub LoadMap(Filename As String)
 
     LoadMapTiles
 
-    ' Reset the character: they are now standing in the middle of the map.
-    Characters(PLAYER).X = MapWidth / 2
-    Characters(PLAYER).Y = MapHeight / 2
-    Characters(PLAYER).ExtraX = 0
-    Characters(PLAYER).ExtraY = 0
-    Characters(PLAYER).State = STATE_STANDING
-    Characters(PLAYER).Frame = 0
-
     RenderMapImage
+End Sub
+
+Sub InitializeCharacter(I As Long)
+    Characters(I).ExtraX = 0
+    Characters(I).ExtraY = 0
+    Characters(I).State = STATE_STANDING
+    Characters(I).Frame = 0
+End Sub
+
+Sub ParseCharacter(File As Long)
+    Dim I As Long
+    Dim Text As String
+    I = UBound(Characters) + 1
+    ReDim _Preserve Characters(I) As Character
+    InitializeCharacter I
+    Do
+        Line Input #File, Text
+        Parse Text
+        LineNumber = LineNumber + 1
+        If Text = "" Or Left$(Text, 1) = "#" Then
+            ' Empty line or comment, ignore it!
+        ElseIf Token = "pokemon" Then
+            Characters(I).IsPokemon = True
+        ElseIf Token = "facing" Then
+            NextToken
+            Characters(I).Facing = ParseFacing(Token)
+        ElseIf Token = "position" Then
+            NextToken
+            Characters(I).X = Val(Token)
+            NextToken
+            Characters(I).Y = Val(Token)
+        ElseIf Token = "start_y" Then
+            NextToken
+            Characters(I).TileStartY = Val(Token)
+        ElseIf Token = "end" Then
+            Exit Do
+        End If
+    Loop
 End Sub
 
 Function WithinMap(X As Long, Y As Long)

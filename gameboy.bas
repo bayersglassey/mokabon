@@ -150,6 +150,45 @@ Dim Shared RectangleY2 As Long
 
 
 ' #################################################################
+' # DECLARATIONS RELATED TO SCRIPTS
+
+Const COMMAND_WAIT = 0
+Const COMMAND_WALK = 1
+Const COMMAND_JUMP = 2
+Const COMMAND_FACE = 3
+Const COMMAND_SAY = 4
+
+Type ScriptCommand
+    CommandType As Integer ' COMMAND_WAIT, etc
+    Str1 As String
+    Num1 As Long
+    Num2 As Long
+End Type
+
+Type Script
+    Start As Long ' Index into ScriptCommands
+    Length As Long ' Number of commands in this script
+End Type
+
+Type ScriptState
+    Script As Script
+    CharacterNumber As Long ' Index into Characters
+    CommandNumber As Long ' Between 1 and Script.Length
+    Frame As Long ' Frame of animation for current command
+End Type
+
+ReDim Shared ScriptCommands(0) As ScriptCommand
+ReDim Shared Scripts(0) As Script
+ReDim Shared ScriptStates(1) As ScriptState
+
+' If we're currently talking to someone, Talking = True, and the state of
+' the script for that conversation is ScriptStates(TALKING_SCRIPT_STATE).
+Const TALKING_SCRIPT_STATE = 1
+Dim Talking As Integer
+Talking = False
+
+
+' #################################################################
 ' # DECLARATIONS RELATED TO THE MAP
 
 ' The image on which we draw the map
@@ -265,15 +304,18 @@ MiscCharacterTileset = CharacterTileset
 MiscCharacterTileset.StartY = 1087
 
 ' Directions a character can be facing
+' NOTE: these numbers are chosen so that turning to the right means adding
+' 1 (Mod 4).
 Const FACING_UP = 0
-Const FACING_DOWN = 1
-Const FACING_LEFT = 2
-Const FACING_RIGHT = 3
+Const FACING_RIGHT = 1
+Const FACING_DOWN = 2
+Const FACING_LEFT = 3
 
 ' States a character can be in, that is, things they can be doing
 Const STATE_STANDING = 0
 Const STATE_WALKING = 1
 Const STATE_JUMPING = 2
+Const STATE_GONE = 3 ' Don't render, collide with, etc this character
 
 Type Character
     ' Whether we should use PokemonCharacterTileset instead of
@@ -304,11 +346,11 @@ Type Character
     TileAddY As Long
 
     ' Which direction the character is facing, for instance, FACING_UP
-    Facing As Long
+    Facing As Integer
 
     ' The character's state, that is, what they are doing.
     ' For instance, STATE_STANDING
-    State As Long
+    State As Integer
 
     ' Frame of animation, that is, how far along in the animation the
     ' character is for their State.
@@ -320,6 +362,16 @@ Type Character
     ' Value which alternates between 0 and 1.
     ' Determines whether left or right foot is used by the walking animation.
     OtherFoot As Integer
+
+    ' Indexes into Scripts
+    ScriptNumber As Long
+    TalkScriptNumber As Long
+
+    ' Starting values for other character fields, set when the map is loaded,
+    ' and used when the map is saved.
+    StartX As Long
+    StartY As Long
+    StartFacing As Integer
 End Type
 
 ReDim Shared Characters(1) As Character
@@ -375,6 +427,7 @@ Do
     Cls
 
     Dim X As Long, Y As Long, I As Long
+    Dim NewX As Long, NewY As Long
 
     ' Mode-specific behaviour
     If Mode = GAME_MODE Then
@@ -386,17 +439,17 @@ Do
         ' Handle player's controls, that is, react to keys the player
         ' is pressing
         If Characters(PLAYER).State = STATE_STANDING Then
+            ' Handle arrow keys
             Dim MoveDirection As Long
             MoveDirection = GetPlayerMoveDirection
             If MoveDirection >= 0 Then
                 ' A single arrow key was pressed!.. so, let's walk in
                 ' that direction.
                 Characters(PLAYER).Facing = MoveDirection
-                Dim NewX As Long, NewY As Long
                 NewX = PlayerX + FacingAddX(MoveDirection)
                 NewY = PlayerY + FacingAddY(MoveDirection)
                 Dim CanMove As Integer
-                CanMove = CanMoveTo(NewX, NewY, MoveDirection)
+                CanMove = CanMoveTo(NewX, NewY, MoveDirection, PLAYER)
                 If ALWAYS_JUMP Then CanMove = 2 ' For debugging!
                 If CanMove = 1 Then
                     ' We are ok to walk to the new map position
@@ -410,11 +463,30 @@ Do
                     Characters(PLAYER).State = STATE_JUMPING
                 End If
             End If
+
+            ' Handle gameboy's "A" button
+            If KeyPressed(Asc("z")) Then
+                NewX = PlayerX + FacingAddX(Characters(Player).Facing)
+                NewY = PlayerY + FacingAddY(Characters(Player).Facing)
+                I = CollideCharacters(NewX, NewY, PLAYER)
+                If I Then
+                    ' We're talking to another character!..
+                    ' Get them to face us.
+                    Characters(I).Facing = _
+                        (Characters(PLAYER).Facing + 2) Mod 4
+                    If Characters(I).TalkScriptNumber Then
+                        Talking = True
+                        SetScriptState TALKING_SCRIPT_STATE, _
+                            Characters(I).TalkScriptNumber, _
+                            I
+                    End If
+                End If
+            End If
         End If
 
         ' Update all characters
         For I = 1 To UBound(Characters)
-            HandleCharacterAnimation I
+            If Characters(I).State <> STATE_GONE Then HandleCharacterAnimation I
         Next
 
         ' Render the map onto the game boy's screen
@@ -422,7 +494,7 @@ Do
 
         ' Render all characters
         For I = 1 To UBound(Characters)
-            RenderCharacter I
+            If Characters(I).State <> STATE_GONE Then RenderCharacter I
         Next
     ElseIf Mode = MAP_EDITOR_MODE Then
         ' Move the player with the arrow keys; in map editor mode, the
@@ -831,6 +903,11 @@ Sub NextToken
     '_Dest = 0: Print "Parsed token: [" + Token + "]"
 End Sub
 
+Sub ParseDie(Text As String)
+    Die "Don't know what to do with line" + Str$(LineNumber) _
+        + ": [" + Text + "]"
+End Sub
+
 Sub LoadMapTiles
     Dim Filename As String
     Dim File As Long
@@ -877,8 +954,7 @@ Sub LoadMapTiles
             MapTiles(I).TR = Val("&H" + Mid$(Text, 4, 2))
             ParsingBottom = True
         Else
-            Die "Don't know what to do with line" + Str$(LineNumber) _
-                + ": [" + Text + "]"
+            ParseDie Text
         End If
     Loop
     Close File
@@ -908,7 +984,9 @@ Sub SaveMap(Filename As String)
         Next
         Print #File, ""
 
-        Print #File, "position "; PlayerX; PlayerY
+        Print #File, "facing "; FacingStr$(Characters(PLAYER).StartFacing)
+        Print #File, "position "; _
+            Characters(PLAYER).StartX; Characters(PLAYER).StartY
         Print #File, ""
 
         For I = PLAYER + 1 To UBound(Characters)
@@ -922,8 +1000,12 @@ Sub WriteCharacter(I As Long, File As Long)
     Print #File, "character"
     If Characters(I).IsPokemon Then Print #File, "    pokemon"
     Print #File, "    start_y "; Characters(I).TileStartY
-    Print #File, "    position "; Characters(I).X; Characters(I).Y
-    Print #File, "    facing "; FacingStr$(Characters(I).Facing)
+    Print #File, "    position "; Characters(I).StartX; Characters(I).StartY
+    Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
+    If Characters(I).ScriptNumber > 0 Then _
+        WriteScript File, Scripts(Characters(I).ScriptNumber), "script"
+    If Characters(I).TalkScriptNumber > 0 Then _
+        WriteScript File, Scripts(Characters(I).TalkScriptNumber), "talk"
     Print #File, "end"
 End Sub
 
@@ -1005,11 +1087,15 @@ Sub LoadMap(Filename As String)
         ElseIf Token = "character" Then
             ParseCharacter File
         Else
-            Die "Don't know what to do with line" + Str$(LineNumber) _
-                + ": [" + Text + "]"
+            ParseDie Text
         End If
     Loop
     Close File
+
+    ' Set the "start" versions of various fields of the player character
+    Characters(PLAYER).StartX = Characters(PLAYER).X
+    Characters(PLAYER).StartY = Characters(PLAYER).Y
+    Characters(PLAYER).StartFacing = Characters(PLAYER).Facing
 
     LoadMapTiles
 
@@ -1037,6 +1123,9 @@ Sub ParseCharacter(File As Long)
             ' Empty line or comment, ignore it!
         ElseIf Token = "pokemon" Then
             Characters(I).IsPokemon = True
+        ElseIf Token = "start_y" Then
+            NextToken
+            Characters(I).TileStartY = Val(Token)
         ElseIf Token = "facing" Then
             NextToken
             Characters(I).Facing = ParseFacing(Token)
@@ -1045,13 +1134,21 @@ Sub ParseCharacter(File As Long)
             Characters(I).X = Val(Token)
             NextToken
             Characters(I).Y = Val(Token)
-        ElseIf Token = "start_y" Then
-            NextToken
-            Characters(I).TileStartY = Val(Token)
+        ElseIf Token = "script" Then
+            ParseScript File
+            Characters(I).ScriptNumber = UBound(Scripts)
+        ElseIf Token = "talk" Then
+            ParseScript File
+            Characters(I).TalkScriptNumber = UBound(Scripts)
         ElseIf Token = "end" Then
             Exit Do
         End If
     Loop
+
+    ' Set the "start" versions of various fields of the player character
+    Characters(I).StartX = Characters(I).X
+    Characters(I).StartY = Characters(I).Y
+    Characters(I).StartFacing = Characters(I).Facing
 End Sub
 
 Function WithinMap(X As Long, Y As Long)
@@ -1071,18 +1168,27 @@ End Function
 ' Whether a character facing the indicated direction can move to the
 ' indicated map location.
 ' Returns 1 if character can walk there, 2 if they can jump, 0 otherwise.
-Function CanMoveTo(X As Long, Y As Long, MoveDirection As Long)
+Function CanMoveTo(X As Long, Y As Long, MoveDirection As Long, _
+    IgnoreCharacter As Long _
+)
     Dim Solidity As Long
     Solidity = MapSolidityAt(X, Y)
     CanMoveTo = 0
     If Solidity = NOT_SOLID Then
-        CanMoveTo = 1 ' Can walk there
+        If CollideCharacters(X, Y, IgnoreCharacter) = 0 Then _
+            CanMoveTo = 1 ' Can walk there
     ElseIf Solidity = JUMP_DOWN Then
-        If MoveDirection = FACING_DOWN Then CanMoveTo = 2 ' Can jump there
+        If MoveDirection = FACING_DOWN And _
+            CollideCharacters(X, Y + 1, IgnoreCharacter) = 0 _
+                Then CanMoveTo = 2 ' Can jump there
     ElseIf Solidity = JUMP_LEFT Then
-        If MoveDirection = FACING_LEFT Then CanMoveTo = 2 ' Can jump there
+        If MoveDirection = FACING_LEFT And _
+            CollideCharacters(X - 1, Y, IgnoreCharacter) = 0 _
+                Then CanMoveTo = 2 ' Can jump there
     ElseIf Solidity = JUMP_RIGHT Then
-        If MoveDirection = FACING_RIGHT Then CanMoveTo = 2 ' Can jump there
+        If MoveDirection = FACING_RIGHT And _
+            CollideCharacters(X + 1, Y, IgnoreCharacter) = 0 _
+                Then CanMoveTo = 2 ' Can jump there
     End If
 End Function
 
@@ -1420,3 +1526,100 @@ End Function
 Function PlayerExtraY
     PlayerExtraY = Characters(PLAYER).ExtraY
 End Function
+
+Function AddScriptCommand(CommandType As Integer)
+    ReDim _Preserve ScriptCommands(UBound(ScriptCommands) + 1) _
+        As ScriptCommand
+    ScriptCommands(UBound(ScriptCommands)).CommandType = CommandType
+    AddScriptCommand = UBound(ScriptCommands)
+End Function
+
+Sub ParseScript(File As Long)
+    Dim I As Long
+    Dim Start As Long
+    Dim Script As Script
+    Dim Text As String
+    Start = UBound(ScriptCommands) + 1
+    Do
+        Line Input #File, Text
+        Parse Text
+        LineNumber = LineNumber + 1
+        If Text = "" Or Left$(Text, 1) = "#" Then
+            ' Empty line or comment, ignore it!
+        ElseIf Token = "wait" Then
+            I = AddScriptCommand(COMMAND_WAIT)
+            NextToken
+            ScriptCommands(I).Num1 = Val(Token)
+        ElseIf Token = "walk" Then
+            I = AddScriptCommand(COMMAND_WALK)
+            NextToken
+            ScriptCommands(I).Num1 = ParseFacing(Token)
+            NextToken
+            ScriptCommands(I).Num2 = Val(Token)
+        ElseIf Token = "jump" Then
+            I = AddScriptCommand(COMMAND_JUMP)
+            NextToken
+            ScriptCommands(I).Num1 = ParseFacing(Token)
+        ElseIf Token = "face" Then
+            I = AddScriptCommand(COMMAND_FACE)
+            NextToken
+            ScriptCommands(I).Num1 = ParseFacing(Token)
+        ElseIf Token = "say" Then
+            I = AddScriptCommand(COMMAND_SAY)
+            NextToken
+            ScriptCommands(I).Str1 = ParseText
+        ElseIf Token = "end" Then
+            Exit Do
+        End If
+    Loop
+
+    Script.Start = Start
+    Script.Length = UBound(ScriptCommands) - (Start - 1)
+
+    ' Append the new script to the end of the Scripts array
+    ReDim _Preserve Scripts(UBound(Scripts) + 1) As Script
+    Scripts(UBound(Scripts)) = Script
+End Sub
+
+Sub WriteScript(File As Long, Script As Script, ScriptType As String)
+    Print #File, "    "; ScriptType
+    Dim I As Long
+    For I = Script.Start To Script.Start + Script.Length - 1
+        Dim Command As ScriptCommand
+        Command = ScriptCommands(I)
+        If Command.CommandType = COMMAND_WAIT Then
+            Print #File, "        wait "; Command.Num1
+        ElseIf Command.CommandType = COMMAND_WALK Then
+            Print #File, "        walk "; FacingStr$(Command.Num1); Command.Num2
+        ElseIf Command.CommandType = COMMAND_JUMP Then
+            Print #File, "        walk "; FacingStr$(Command.Num1)
+        ElseIf Command.CommandType = COMMAND_FACE Then
+            Print #File, "        face "; FacingStr$(Command.Num1)
+        ElseIf Command.CommandType = COMMAND_SAY Then
+            Print #File, "        say "; Command.Str1
+        Else
+            Die "Unknown command type: " + Str$(Command.CommandType)
+        End If
+    Next
+    Print #File, "    end"
+End Sub
+
+Function CollideCharacters(X As Long, Y As Long, IgnoreCharacter As Long)
+    CollideCharacters = False
+    Dim I As Long
+    For I = 1 To UBound(Characters)
+        If I = IgnoreCharacter Then _Continue
+        If Characters(I).State = STATE_GONE Then _Continue
+        If Characters(I).X = X And Characters(I).Y = Y Then
+            CollideCharacters = I
+            Exit Function
+        End If
+    Next
+End Function
+
+Sub SetScriptState(StateNumber As Long, ScriptNumber As Long, CharacterNumber As Long)
+    ScriptStates(StateNumber).Script = Scripts(ScriptNumber)
+    ScriptStates(StateNumber).CharacterNumber = CharacterNumber
+    ScriptStates(StateNumber).CommandNumber = 1
+    ScriptStates(StateNumber).Frame = 0
+End Sub

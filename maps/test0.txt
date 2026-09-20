@@ -15,12 +15,21 @@ B B B C C B B B 0 0 0 3 C B C 3 0 0
 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 5
 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
+facing u
 position  5  7 
 
 character
     start_y  7 
     position  4  6 
     facing d
+    talk
+        say My name is JIMBERT.
+        walk d 3 
+        wait  5 
+        face u
+        wait  5 
+        say was nice to talk to you...
+    end
 end
 
 character
@@ -28,6 +37,16 @@ character
     start_y  0 
     position  5  10 
     facing r
+    script
+        wait  30 
+        walk r 1 
+        walk r
+        walk r 1 
+        wait  30 
+        walk l 1 
+        walk l
+        walk l 1 
+    end
 end
 
 character
@@ -35,5 +54,15 @@ character
     start_y  1 
     position  12  10 
     facing l
+    script
+        face u
+        wait  10 
+        face r
+        wait  10 
+        face d
+        wait  10 
+        face l
+        wait  10 
+    end
 end
 

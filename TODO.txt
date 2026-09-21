@@ -83,6 +83,10 @@
 [ ] Implement characters
     [X] They appear on the map, are animated, etc. The player is one!
     [X] The map includes a list of characters
+    [X] Add a "character editor" mode: you can select a character, move
+        them around, and change which direction they're facing.
+        Hidden characters (i.e. triggers) should be shown as a blinking
+        question mark or something.
     [ ] Some of them should be shop owners, so you can buy items...
     [ ] Some of them should heal your pokemon...
 [ ] Implement items (lying on the ground, they look like pokeballs)
@@ -90,8 +94,6 @@
     a map tile, which is uncovered when the item is taken.
     [ ] Support hidden items, which you can still pick up, just you can't
         see them!..
-        TODO: figure out whether any such items actually exist in Pokemon
-        Red/Blue. I'm actually not sure there are.
 [ ] Implement triggers (places on the map you can interact with)...
     Some of them you just step on, some of them you press "A" on, etc.
 [ ] Implement doors...

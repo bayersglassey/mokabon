@@ -19,6 +19,7 @@ facing u
 position  5  7 
 
 character
+    name JIMBERT
     start_y  7 
     facing d
     position  4  6 
@@ -28,7 +29,7 @@ character
         wait  10 
         face u
         wait  10 
-        say T'was was nice to`talk to you...
+        say T'was nice to talk`to you...
         talk  2 
     end
     talk
@@ -41,6 +42,7 @@ character
 end
 
 character
+    name PIDGEY
     pokemon
     start_y  0 
     facing r
@@ -61,6 +63,7 @@ character
 end
 
 character
+    name PIKACHU
     pokemon
     start_y  1 
     facing l
@@ -77,6 +80,17 @@ character
     end
     talk
         say PIKA PIKA!
+    end
+end
+
+character
+    name TREE
+    hidden
+    start_y  0 
+    facing u
+    position  4  3 
+    talk
+        say Shhhhh! I'm hiding`behind this tree!
     end
 end
 

@@ -25,6 +25,8 @@ Const LeftCode = 19200
 Const RightCode = 19712
 Const EnterCode = 13
 Const EscapeCode = 27
+Const F5Code = 16128
+Const F7Code = 16640
 
 ' Size of the gameboy's screen in pixels
 Const TrueScreenWidth = 160
@@ -45,6 +47,7 @@ Const MAP_EDITOR_MODE = "Map Editor"
 Const MAP_SCROLL_MODE = "Map Scrolling Tool"
 Const MAP_RESIZE_MODE = "Map Resizing Tool"
 Const TILE_SELECTOR_MODE = "Tile Selector"
+Const CHARACTER_EDITOR_MODE = "Character Editor"
 Mode = GAME_MODE
 
 ' When Mode = TILE_SELECTOR_MODE, we render MapTiles as a grid, and this
@@ -327,6 +330,14 @@ Const STATE_JUMPING = 2
 Const STATE_GONE = 3 ' Don't render, collide with, etc this character
 
 Type Character
+    ' Character's name; should be unique within a given map
+    Name As String
+
+    ' If True, this character is invisible.
+    ' Can be used to implement "triggers", i.e. map locations which do
+    ' something when you step on them or "talk" to them.
+    IsHidden As Integer
+
     ' Whether we should use PokemonCharacterTileset instead of
     ' CharacterTileset
     IsPokemon As Integer
@@ -372,7 +383,7 @@ Type Character
     ' Determines whether left or right foot is used by the walking animation.
     OtherFoot As Integer
 
-    ' Index into ScriptStates
+    ' Index into ScriptStates, or 0
     ScriptStateNumber As Long
 
     ' Index into Scripts
@@ -415,6 +426,9 @@ SelectedMapTiles(9) = 8
 SelectedMapTiles(10) = 9
 Dim Shared SelectedMapTileNumber As Long
 
+' The currently selected character, if any (used by CHARACTER_EDITOR_MODE)
+Dim Shared SelectedCharacter As Long
+
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO THE PLAYER
@@ -448,6 +462,7 @@ Do
 
     Dim X As Long, Y As Long, I As Long
     Dim NewX As Long, NewY As Long
+    Dim MoveDirection As Long
 
     If Mode = GAME_MODE And Talking Then
         If ScriptStateDone(TALKING_SCRIPT_STATE) Then Talking = False
@@ -481,8 +496,7 @@ Do
         ' is pressing
         If Characters(PLAYER).State = STATE_STANDING Then
             ' Handle arrow keys
-            Dim MoveDirection As Long
-            MoveDirection = GetPlayerMoveDirection
+            MoveDirection = GetPlayerMoveDirection(True)
             If MoveDirection >= 0 Then
                 ' A single arrow key was pressed!.. so, let's walk in
                 ' that direction.
@@ -547,14 +561,7 @@ Do
         ' Move the player with the arrow keys; in map editor mode, the
         ' player is invisible, and in their place is a box showing the
         ' current map location (that is, tile) to be edited.
-        If KeyPressed(UpCode) And PlayerY > 0 Then _
-            Characters(PLAYER).Y = PlayerY - 1
-        If KeyPressed(DownCode) And PlayerY < MapHeight - 1 Then _
-            Characters(PLAYER).Y = PlayerY + 1
-        If KeyPressed(LeftCode) And PlayerX > 0 Then _
-            Characters(PLAYER).X = PlayerX - 1
-        If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
-            Characters(PLAYER).X = PlayerX + 1
+        HandleEditorArrowKeys
 
         ' Set/unset the "anchor point"
         If KeyPressed(Asc("a")) Then
@@ -603,19 +610,23 @@ Do
             ' of that!..
             PrevKeyCode = EnterCode
         End If
-        If KeyPressed(Asc("s")) Then SaveMap MapFilename
-        If KeyPressed(Asc("l")) Then LoadMap MapFilename
+        If KeyPressed(F5Code) Then SaveMap MapFilename
+        If KeyPressed(F7Code) Then LoadMap MapFilename
 
         ' Maybe switch to a different mode
         If KeyPressed(Asc("m")) Or KeyPressed(EnterCode) Then _
             Mode = GAME_MODE
         If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
-        If KeyPressed(Asc("c")) Then Mode = MAP_SCROLL_MODE
+        If KeyPressed(Asc("s")) Then Mode = MAP_SCROLL_MODE
         If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
+        If KeyPressed(Asc("c")) Then
+            Mode = CHARACTER_EDITOR_MODE
+            SelectedCharacter = 0
+        End If
     ElseIf Mode = MAP_SCROLL_MODE Then
         RenderMap
         HandleMapScrollMode
-        If KeyPressed(Asc("c")) Or KeyPressed(EnterCode) Then _
+        If KeyPressed(Asc("s")) Or KeyPressed(EnterCode) Then _
             Mode = MAP_EDITOR_MODE
     ElseIf Mode = MAP_RESIZE_MODE Then
         RenderMap
@@ -653,6 +664,49 @@ Do
         ' Change modes
         If KeyPressed(Asc("t")) Or KeyPressed(EnterCode) Then _
             Mode = MAP_EDITOR_MODE
+    ElseIf Mode = CHARACTER_EDITOR_MODE Then
+        If KeyPressed(Asc(" ")) Then
+            If SelectedCharacter Then
+                ' Unselect currently selected character
+                SelectedCharacter = 0
+            Else
+                ' Attempt to select a character
+                SelectedCharacter = CollideCharacters(PlayerX, PlayerY, PLAYER)
+            End If
+        End If
+        If SelectedCharacter Then
+            ' Move the selected character around with us, and make them face
+            ' the direction of the arrow key we're pressing (if any)
+            MoveDirection = GetPlayerMoveDirection(False)
+            If MoveDirection >=0 _
+                And Not Characters(SelectedCharacter).IsHidden _
+                And Characters(SelectedCharacter).Facing <> MoveDirection _
+            Then
+                ' Just rotate the character
+                Characters(SelectedCharacter).StartFacing = MoveDirection
+                Characters(SelectedCharacter).Facing = MoveDirection
+            Else
+                ' Move the character
+                If MoveDirection >= 0 Then PrevKeyCode = 0
+                HandleEditorArrowKeys
+                Characters(SelectedCharacter).StartX = PlayerX
+                Characters(SelectedCharacter).StartY = PlayerY
+                Characters(SelectedCharacter).X = PlayerX
+                Characters(SelectedCharacter).Y = PlayerY
+            End If
+            ResetCharacterState SelectedCharacter
+            ResetCharacterScripts SelectedCharacter
+            HandleCharacterAnimation SelectedCharacter
+        Else
+            HandleEditorArrowKeys
+        End If
+
+        RenderMap
+        For I = PLAYER + 1 To UBound(Characters)
+            RenderCharacter I
+        Next
+        If KeyPressed(Asc("c")) Or KeyPressed(EnterCode) Then _
+            Mode = MAP_EDITOR_MODE
     Else
         Die "Unknown mode: " + Mode
     End If
@@ -666,7 +720,13 @@ Do
     ' Display the current mode
     _Dest 0
     Locate 1, 1
-    Print Mode
+    If Mode = CHARACTER_EDITOR_MODE And SelectedCharacter Then
+        Print Mode; ": "; Characters(SelectedCharacter).Name
+    ElseIf Mode = MAP_RESIZE_MODE Then
+        Print Mode; ": "; MapWidth; " x "; MapHeight
+    Else
+        Print Mode
+    End If
 
     ' Show whatever we've drawn on the screen
     _Display
@@ -714,15 +774,16 @@ Sub PrintHelp
         Print " Enter: gameboy's Start button"
         Print " M: enter map editor mode"
         Print " F: change map filename"
-        Print " S: save map"
-        Print " L: load map"
+        Print " F5: save map"
+        Print " F7: load map"
     ElseIf Mode = MAP_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: place tile"
         Print " A: set/unset anchor point"
         Print " T: enter tile selection mode"
-        Print " C: enter map scroll mode"
+        Print " S: enter map scroll mode"
         Print " R: enter map resize mode"
+        Print " C: enter character editor mode"
         Print " M or Enter: exit map editor mode"
     ElseIf Mode = MAP_SCROLL_MODE Then
         Print " Arrow keys: scroll the map"
@@ -734,6 +795,10 @@ Sub PrintHelp
         Print " Arrow keys: move"
         Print " 0-9: choose tile"
         Print " T or Enter: exit tile selection mode"
+    ElseIf Mode = CHARACTER_EDITOR_MODE Then
+        Print " Arrow keys: move"
+        Print " Space: select/unselect character"
+        Print " C or Enter: exit character editor mode"
     Else
         Die "Unknown mode: " + Mode
     End If
@@ -1062,6 +1127,9 @@ End Sub
 Sub WriteCharacter(I As Long, File As Long)
     Dim J As Long
     Print #File, "character"
+    If Len(Characters(I).Name) Then Print #File, "    name "; _
+        Characters(I).Name
+    If Characters(I).IsHidden Then Print #File, "    hidden"
     If Characters(I).IsPokemon Then Print #File, "    pokemon"
     Print #File, "    start_y "; Characters(I).TileStartY
     Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
@@ -1111,8 +1179,8 @@ Sub LoadMap(Filename As String)
     MapTilesetNumber = 0
 
     ReDim _Preserve Characters(1) As Character
-
     InitializeCharacter PLAYER
+    Characters(PLAYER).Name = "PLAYER"
 
     File = FreeFile
     Open Filename For Input As File
@@ -1174,10 +1242,32 @@ Sub LoadMap(Filename As String)
 End Sub
 
 Sub InitializeCharacter(I As Long)
+    ' When you ReDim an array of a custom type, its memory has random garbage
+    ' in it!.. maybe just when you ReDim Shared?..
+    ' Anyway, we need to make sure to zero out all Character fields to each
+    ' new element of the Characters array.
+    Characters(I).Name = "NONAME"
+    Characters(I).IsHidden = False
+    Characters(I).IsPokemon = False
+    Characters(I).X = 0
+    Characters(I).Y = 0
     Characters(I).ExtraX = 0
     Characters(I).ExtraY = 0
+    Characters(I).TileStartX = 0
+    Characters(I).TileStartY = 0
+    Characters(I).TileAddX = 0
+    Characters(I).TileAddY = 0
+    Characters(I).Facing = FACING_UP
     Characters(I).State = STATE_STANDING
     Characters(I).Frame = 0
+    Characters(I).OtherFoot = 0
+    Characters(I).ScriptStateNumber = 0
+    Characters(I).TalkScriptsStart = 0
+    Characters(I).TalkScriptsLength = 0
+    Characters(I).TalkScriptNumber = 0
+    Characters(I).StartX = 0
+    Characters(I).StartY = 0
+    Characters(I).StartFacing = FACING_UP
 End Sub
 
 Sub ParseCharacter(File As Long)
@@ -1193,6 +1283,11 @@ Sub ParseCharacter(File As Long)
         LineNumber = LineNumber + 1
         If Text = "" Or Left$(Text, 1) = "#" Then
             ' Empty line or comment, ignore it!
+        ElseIf Token = "name" Then
+            NextToken
+            Characters(I).Name = Token
+        ElseIf Token = "hidden" Then
+            Characters(I).IsHidden = True
         ElseIf Token = "pokemon" Then
             Characters(I).IsPokemon = True
         ElseIf Token = "start_y" Then
@@ -1218,7 +1313,6 @@ Sub ParseCharacter(File As Long)
             SetScriptState UBound(ScriptStates), UBound(Scripts)
             Characters(I).ScriptStateNumber = UBound(ScriptStates)
         ElseIf Token = "talk" Then
-            Characters(I).TalkScriptNumber = 1
             ParseScript File, I, False
         ElseIf Token = "end" Then
             Exit Do
@@ -1227,6 +1321,8 @@ Sub ParseCharacter(File As Long)
 
     Characters(I).TalkScriptsLength = _
         UBound(Scripts) + 1 - Characters(I).TalkScriptsStart
+
+    ResetCharacterScripts I
 
     ' Set the "start" versions of various fields of the player character
     Characters(I).StartX = Characters(I).X
@@ -1375,7 +1471,8 @@ Sub RenderMap
         MapImage, ScreenImage
 
     If Mode = MAP_EDITOR_MODE Then
-        ' Render a "selection box" around the tile at the current map location
+        ' Render a "selection box" around the tile at the current map location,
+        ' or around a larger area selected using the "anchor point"
         _Dest ScreenImage
         UpdateMapEditorAnchorRectangle
         RenderSelectionBox _
@@ -1383,6 +1480,13 @@ Sub RenderMap
             MapScrollY + RectangleY1 * MapTileHeight, _
             (RectangleX2 - RectangleX1 + 1) * MapTileWidth, _
             (RectangleY2 - RectangleY1 + 1) * MapTileHeight
+    ElseIf Mode = CHARACTER_EDITOR_MODE Then
+        ' Render a "selection box" around the tile at the current map location
+        _Dest ScreenImage
+        RenderSelectionBox _
+            MapScrollX + PlayerX * MapTileWidth, _
+            MapScrollY + PlayerY * MapTileHeight, _
+            MapTileWidth, MapTileHeight
     End If
 End Sub
 
@@ -1451,12 +1555,30 @@ Sub RenderScreen
     _PutImage (0, 0)-(ScreenWidth - 1, ScreenHeight - 1), ScreenImage, 0
 End Sub
 
-Function GetPlayerMoveDirection
+Sub HandleEditorArrowKeys
+    If KeyPressed(UpCode) And PlayerY > 0 Then _
+        Characters(PLAYER).Y = PlayerY - 1
+    If KeyPressed(DownCode) And PlayerY < MapHeight - 1 Then _
+        Characters(PLAYER).Y = PlayerY + 1
+    If KeyPressed(LeftCode) And PlayerX > 0 Then _
+        Characters(PLAYER).X = PlayerX - 1
+    If KeyPressed(RightCode) And PlayerX < MapWidth - 1 Then _
+        Characters(PLAYER).X = PlayerX + 1
+End Sub
+
+Function GetPlayerMoveDirection(Smooth As Integer)
     Dim Up As Long, Down As Long, Left As Long, Right As Long
-    Up = _KeyDown(UpCode)
-    Down = _KeyDown(DownCode)
-    Left = _KeyDown(LeftCode)
-    Right = _KeyDown(RightCode)
+    If Smooth Then
+        Up = _KeyDown(UpCode)
+        Down = _KeyDown(DownCode)
+        Left = _KeyDown(LeftCode)
+        Right = _KeyDown(RightCode)
+    Else
+        Up = KeyPressed(UpCode)
+        Down = KeyPressed(DownCode)
+        Left = KeyPressed(LeftCode)
+        Right = KeyPressed(RightCode)
+    End If
     
     If Up + Down + Left + Right = True Then
         ' Exactly one of the 4 arrow keys is being pressed
@@ -1480,6 +1602,33 @@ Function FacingAddY(Facing As Long)
     If Facing = FACING_UP Then FacingAddY = -1
     If Facing = FACING_DOWN Then FacingAddY = 1
 End Function
+
+Sub ResetCharacterState(I As Long)
+    Characters(I).State = STATE_STANDING
+    Characters(I).Frame = 0
+    Characters(I).ExtraX = 0
+    Characters(I).ExtraY = 0
+End Sub
+
+Sub ResetCharacterScripts(I As Long)
+    ' If we have at least one talk script, then the first time someone talks
+    ' to us, use the first talk script.
+    ' Otherwise (that is, if we have no talk scripts), don't use one!
+    If Characters(I).TalkScriptsLength > 0 Then
+        Characters(I).TalkScriptNumber = 1
+    Else
+        Characters(I).TalkScriptNumber = 0
+    End If
+
+    If Characters(I).ScriptStateNumber Then
+        ResetScriptState Characters(I).ScriptStateNumber
+    End If
+End Sub
+
+Sub ResetScriptState(I As Long)
+    ScriptStates(I).CommandNumber = 1
+    ScriptStates(I).Frame = 0
+End Sub
 
 Sub HandleCharacterAnimation(I As Long)
     If Characters(I).State = STATE_GONE Then Exit Sub
@@ -1535,10 +1684,7 @@ Sub HandleCharacterAnimation(I As Long)
 
         If Frame >= 8 * Multiplier - 1 Then
             ' Done the walking/jumping animation
-            Characters(I).State = STATE_STANDING
-            Characters(I).Frame = 0
-            Characters(I).ExtraX = 0
-            Characters(I).ExtraY = 0
+            ResetCharacterState I
             Characters(I).OtherFoot = (Characters(I).OtherFoot + 1) Mod 2
         Else
             Characters(I).Frame = Frame + 1
@@ -1547,14 +1693,32 @@ Sub HandleCharacterAnimation(I As Long)
 End Sub
 
 Sub RenderCharacter(I As Long)
-    ' Draw Characters(I) onto the game boy's screen
-
-    If Characters(I).State = STATE_GONE Then Exit Sub
-
-    _Dest ScreenImage
+    ' Draw the character Characters(I) onto the game boy's screen
 
     Dim Character As Character
     Character = Characters(I)
+
+    If Character.State = STATE_GONE Then Exit Sub
+    If Character.IsHidden And Mode <> CHARACTER_EDITOR_MODE Then Exit Sub
+
+    _Dest ScreenImage
+
+    ' The location in pixels to render the character at
+    Dim X As Long
+    Dim Y As Long
+
+    ' The location in pixels of the top-left corner of the map on the
+    ' game boy's screen
+    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+
+    If Character.IsHidden Then
+        ' In "character editor" mode, show an exclamation mark over
+        ' hidden characters
+        RenderTile MiscCharacterTileset, 2, 1, _
+            Character.X, Character.Y, X, Y - 4
+        Exit Sub
+    End If
 
     Dim TileX As Long, TileY As Long
     TileX = Character.TileStartX + Character.TileAddX
@@ -1568,29 +1732,20 @@ Sub RenderCharacter(I As Long)
         End If
     End If
 
-    ' The location in pixels to render the character at
-    Dim X As Long
-    Dim Y As Long
-
-    ' The location in pixels of the top-left corner of the map on the
-    ' game boy's screen
-    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
-
-    If Characters(I).State = STATE_JUMPING Then
+    If Character.State = STATE_JUMPING Then
         ' When a character is jumping, we need to render their shadow
         RenderTile MiscCharacterTileset, 9, 0, Character.X, Character.Y, _
             X + Character.ExtraX, Y + Character.ExtraY
 
         ' Character's sprite moves up and down as they jump
         Dim Frame As Long
-        Frame = Characters(I).Frame
+        Frame = Character.Frame
         Y = Y - (10 - Abs(Frame - 8))
     End If
 
     ' Pokemon use a different character tileset
     Dim Tileset As Tileset
-    If Characters(I).IsPokemon Then
+    If Character.IsPokemon Then
         Tileset = PokemonCharacterTileset
     Else
         Tileset = CharacterTileset

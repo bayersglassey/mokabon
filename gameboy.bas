@@ -174,6 +174,9 @@ Type Script
     CharacterNumber As Long ' Index into Characters
     Start As Long ' Index into ScriptCommands
     Length As Long ' Number of commands in this script
+
+    ' True if this script should loop around to the beginning, otherwise False
+    ShouldLoop As Integer
 End Type
 
 Type ScriptState
@@ -529,10 +532,6 @@ Do
         For I = 1 To UBound(Characters)
             If Characters(I).ScriptStateNumber Then
                 UpdateScriptState Characters(I).ScriptStateNumber
-                ' Loop the script forever
-                If ScriptStateDone(Characters(I).ScriptStateNumber) Then _
-                    ScriptStates(Characters(I).ScriptStateNumber) _
-                        .CommandNumber = 1
             End If
             HandleCharacterAnimation I
         Next
@@ -1212,7 +1211,7 @@ Sub ParseCharacter(File As Long)
                 Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
                     "talk" + QUOTE + " before " + QUOTE + "script" + QUOTE
             End If
-            ParseScript File, I
+            ParseScript File, I, True
             Characters(I).TalkScriptsStart = UBound(Scripts) + 1
             ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
                 As ScriptState
@@ -1220,7 +1219,7 @@ Sub ParseCharacter(File As Long)
             Characters(I).ScriptStateNumber = UBound(ScriptStates)
         ElseIf Token = "talk" Then
             Characters(I).TalkScriptNumber = 1
-            ParseScript File, I
+            ParseScript File, I, False
         ElseIf Token = "end" Then
             Exit Do
         End If
@@ -1630,7 +1629,7 @@ Function AddScriptCommand(CommandType As Integer)
     AddScriptCommand = UBound(ScriptCommands)
 End Function
 
-Sub ParseScript(File As Long, CharacterNumber As Long)
+Sub ParseScript(File As Long, CharacterNumber As Long, ShouldLoop As Integer)
     Dim I As Long
     Dim Start As Long
     Dim Script As Script
@@ -1677,6 +1676,7 @@ Sub ParseScript(File As Long, CharacterNumber As Long)
     Script.CharacterNumber = CharacterNumber
     Script.Start = Start
     Script.Length = UBound(ScriptCommands) - (Start - 1)
+    Script.ShouldLoop = ShouldLoop
 
     ' Append the new script to the end of the Scripts array
     ReDim _Preserve Scripts(UBound(Scripts) + 1) As Script
@@ -1746,7 +1746,13 @@ Sub UpdateScriptState(StateNumber As Long)
     Do
         TalkingText = ""
 
-        If State.CommandNumber > Script.Length Then Exit Do
+        If State.CommandNumber > Script.Length Then
+            If Script.ShouldLoop Then
+                State.CommandNumber = 0
+            Else
+                Exit Do
+            End If
+        End If
 
         ' Wait for character's current animation to complete, before doing
         ' any script actions

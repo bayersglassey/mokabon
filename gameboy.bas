@@ -133,6 +133,8 @@ FontTileset.CharacterMap = 1 ' Use the first character map
 ' WriteAt, WriteText)
 Dim Shared WriteX As Long
 Dim Shared WriteY As Long
+Dim Shared WriteStartX As Long
+Dim Shared WriteWidth As Long
 
 ' Used by subroutines Parse, NextToken
 Dim Shared ParseText As String
@@ -852,9 +854,11 @@ Sub SetCharacterMap(CharacterMap As Long, X As Long, Y As Long, Text As String)
     Next
 End Sub
 
-Sub WriteAt(X As Long, Y As Long)
+Sub WriteAt(X As Long, Y As Long, Width As Long)
     WriteX = X
     WriteY = Y
+    WriteStartX = X
+    WriteWidth = Width
 End Sub
 
 Sub RenderTile( _
@@ -882,6 +886,7 @@ Sub RenderTile( _
 End Sub
 
 Sub WriteText(Text As String)
+    Dim LineWidth As Long
     Dim I As Integer
     Dim Ch As Integer
     Dim Entry As XYPair
@@ -892,6 +897,19 @@ Sub WriteText(Text As String)
     ' the screen, using the tiles in FontTileset
     For I = 1 To Len(Text)
         Ch = Asc(Mid$(Text, I, 1)) ' Get the next character from Text
+        If Ch = Asc("`") Then
+            ' Backtick means newline!..
+            LineWidth = 0
+            WriteX = WriteStartX
+            WriteY = WriteY + 1
+            _Continue
+        ElseIf WriteWidth > 0 And LineWidth >= WriteWidth Then
+            LineWidth = 0
+            WriteX = WriteStartX
+            WriteY = WriteY + 1
+        Else
+            LineWidth = LineWidth + 1
+        End If
         Entry = CharacterMapEntries(FontTileset.CharacterMap, Ch)
         RenderTile FontTileset, Entry.X, Entry.Y, WriteX, WriteY, 0, 0
         WriteX = WriteX + 1
@@ -1799,27 +1817,54 @@ Sub UpdateScriptState(StateNumber As Long)
     ScriptStates(StateNumber) = State
 End Sub
 
-Sub RenderTextBox(FullText As String)
-    _Dest ScreenImage
+Sub RenderTextBox(Text As String)
+    _Dest ScreenImage ' Draw onto the game boy's screen
 
-    ' It looks like if we assign to a String-typed parameter, the underlying
-    ' string is actually modified!.. O_o
-    ' So... strings in QB64 are pass-by-reference?!..
-    Dim Text As String
-    Text = FullText
+    Const TextBoxX = 0
+    Const TextBoxY = 13
+    Const TextBoxWidth = 18
+    Const TextBoxHeight = 3
+    Dim X As Long, Y As Long
 
-    ' TODO: render a nice text box at bottom of screen!
-    ' For now, we just dump the text at the top, with no border...
+    ' Top-left corner
+    RenderTile FontTileset, 9, 9, _
+        TextBoxX, TextBoxY, 0, 0
 
-    Const TextWidth = 16
-    Dim I As Long
-    Dim AddY As Long
-    I = 1
-    AddY = 0
-    While Len(Text) > 0
-        WriteAt 0, AddY
-        WriteText Mid$(Text, 1, TextWidth)
-        Text = Mid$(Text, TextWidth + 1)
-        AddY = AddY + 1
-    Wend
+    ' Top-right corner
+    RenderTile FontTileset, 11, 9, _
+        TextBoxX + TextBoxWidth + 1, TextBoxY, 0, 0
+
+    ' Bottom-left corner
+    RenderTile FontTileset, 13, 9, _
+        TextBoxX, TextBoxY + TextBoxHeight + 1, 0, 0
+
+    ' Bottom-right corner
+    RenderTile FontTileset, 14, 9, _
+        TextBoxX + TextBoxWidth + 1, TextBoxY + TextBoxHeight + 1, 0, 0
+
+    For X = 1 To TextBoxWidth
+        ' Top edge
+        RenderTile FontTileset, 10, 9, _
+            TextBoxX + X, TextBoxY, 0, 0
+        ' Bottom edge
+        RenderTile FontTileset, 10, 9, _
+            TextBoxX + X, TextBoxY + TextBoxHeight + 1, 0, 0
+    Next
+
+    For Y = 1 To TextBoxHeight
+        ' Left edge
+        RenderTile FontTileset, 12, 9, _
+            TextBoxX, TextBoxY + Y, 0, 0
+        ' Bottom edge
+        RenderTile FontTileset, 12, 9, _
+            TextBoxX + TextBoxWidth + 1, TextBoxY + Y, 0, 0
+        ' Fill the middle with emptiness
+        For X = 1 To TextBoxWidth
+            RenderTile FontTileset, 0, 4, _
+                TextBoxX + X, TextBoxY + Y, 0, 0
+        Next
+    Next
+
+    WriteAt TextBoxX + 1, TextBoxY + 1, TextBoxWidth
+    WriteText Text
 End Sub

@@ -121,7 +121,7 @@
 [X] Add Character fields: StartX, StartY, StartFacing.
     Used for saving/loading.
 [X] Support infinitely many "talk" scripts per character
-[ ] RenderTextBox should draw a nice border around its text, at the
+[X] RenderTextBox should draw a nice border around its text, at the
     bottom of the screen.
 [ ] The way character scripts loop should probably happen within
     UpdateScriptState... so like, add State.Loops or something.

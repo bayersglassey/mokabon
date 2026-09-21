@@ -31,7 +31,7 @@ character
         say T'was was nice to talk to you...
         talk  2 
     end
-    talk2
+    talk
         say Back I go!..
         walk u 3 
         wait  10 

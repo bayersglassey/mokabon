@@ -3,6 +3,8 @@ Option Base 1 ' Array indexes start at 1, not 0
 
 Const True = -1
 Const False = 0
+Dim Shared QUOTE As String
+QUOTE = Chr$(34) ' Literal quote character (")
 
 ' Frames per second (how fast the animation is)
 Const FPS = 30
@@ -368,12 +370,17 @@ Type Character
     ' Index into ScriptStates
     ScriptStateNumber As Long
 
-    ' Indexes into Scripts
-    TalkScriptNumber As Long
-    TalkScriptNumber2 As Long
+    ' Index into Scripts
+    TalkScriptsStart As Long
 
-    ' Indicates whether TalkScriptNumber or TalkScriptNumber2 should be used.
-    TalkState As Integer
+    ' Number of entries in Scripts
+    TalkScriptsLength As Long
+
+    ' Combined with TalkScriptsStart to indicate the talk script to be
+    ' used.
+    ' If 0, no talk script is used; otherwise, the script to be used
+    ' is Scripts(TalkScriptsStart + TalkScriptNumber - 1)
+    TalkScriptNumber As Integer
 
     ' Starting values for other character fields, set when the map is loaded,
     ' and used when the map is saved.
@@ -501,10 +508,16 @@ Do
                 If I > 0 Then
                     If Characters(I).State = STATE_STANDING Then
                         ' We're talking to another character!..
-                        ' Get them to face us, and attempt to talk to them.
+                        ' Get them to face us, and run their talk script,
+                        ' if any.
                         Characters(I).Facing = _
                             (Characters(PLAYER).Facing + 2) Mod 4
-                        TalkToCharacter I
+                        If Characters(I).TalkScriptNumber > 0 Then
+                            Talking = True
+                            SetScriptState TALKING_SCRIPT_STATE, _
+                                Characters(I).TalkScriptsStart _
+                                    + Characters(I).TalkScriptNumber - 1
+                        End If
                     End If
                 End If
             End If
@@ -1030,6 +1043,7 @@ Sub SaveMap(Filename As String)
 End Sub
 
 Sub WriteCharacter(I As Long, File As Long)
+    Dim J As Long
     Print #File, "character"
     If Characters(I).IsPokemon Then Print #File, "    pokemon"
     Print #File, "    start_y "; Characters(I).TileStartY
@@ -1041,10 +1055,11 @@ Sub WriteCharacter(I As Long, File As Long)
                 ScriptStates(Characters(I).ScriptStateNumber).ScriptNumber _
             ), _
             "script"
-    If Characters(I).TalkScriptNumber > 0 Then _
-        WriteScript File, Scripts(Characters(I).TalkScriptNumber), "talk"
-    If Characters(I).TalkScriptNumber2 > 0 Then _
-        WriteScript File, Scripts(Characters(I).TalkScriptNumber2), "talk2"
+    For J = 1 To Characters(I).TalkScriptsLength
+        WriteScript File, _
+            Scripts(Characters(I).TalkScriptsStart + J - 1), _
+            "talk"
+    Next
     Print #File, "end"
 End Sub
 
@@ -1154,6 +1169,7 @@ Sub ParseCharacter(File As Long)
     I = UBound(Characters) + 1
     ReDim _Preserve Characters(I) As Character
     InitializeCharacter I
+    Characters(I).TalkScriptsStart = UBound(Scripts) + 1
     Do
         Line Input #File, Text
         Parse Text
@@ -1174,21 +1190,26 @@ Sub ParseCharacter(File As Long)
             NextToken
             Characters(I).Y = Val(Token)
         ElseIf Token = "script" Then
+            If Characters(I).TalkScriptsStart < UBound(Scripts) + 1 Then
+                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
+                    "talk" + QUOTE + " before " + QUOTE + "script" + QUOTE
+            End If
             ParseScript File, I
+            Characters(I).TalkScriptsStart = UBound(Scripts) + 1
             ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
                 As ScriptState
             SetScriptState UBound(ScriptStates), UBound(Scripts)
             Characters(I).ScriptStateNumber = UBound(ScriptStates)
         ElseIf Token = "talk" Then
+            Characters(I).TalkScriptNumber = 1
             ParseScript File, I
-            Characters(I).TalkScriptNumber = UBound(Scripts)
-        ElseIf Token = "talk2" Then
-            ParseScript File, I
-            Characters(I).TalkScriptNumber2 = UBound(Scripts)
         ElseIf Token = "end" Then
             Exit Do
         End If
     Loop
+
+    Characters(I).TalkScriptsLength = _
+        UBound(Scripts) + 1 - Characters(I).TalkScriptsStart
 
     ' Set the "start" versions of various fields of the player character
     Characters(I).StartX = Characters(I).X
@@ -1628,7 +1649,7 @@ Sub ParseScript(File As Long, CharacterNumber As Long)
         ElseIf Token = "talk" Then
             I = AddScriptCommand(COMMAND_TALK)
             NextToken
-            ScriptCommands(I).Num1 = Val(Token) - 1
+            ScriptCommands(I).Num1 = Val(Token)
         ElseIf Token = "end" Then
             Exit Do
         End If
@@ -1661,7 +1682,7 @@ Sub WriteScript(File As Long, Script As Script, ScriptType As String)
         ElseIf Command.CommandType = COMMAND_SAY Then
             Print #File, "        say "; Command.Str1
         ElseIf Command.CommandType = COMMAND_TALK Then
-            Print #File, "        talk "; Command.Num1 + 1
+            Print #File, "        talk "; Command.Num1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -1767,7 +1788,7 @@ Sub UpdateScriptState(StateNumber As Long)
                 Exit Do
             End If
         ElseIf Command.CommandType = COMMAND_TALK Then
-            Characters(Script.CharacterNumber).TalkState = Command.Num1
+            Characters(Script.CharacterNumber).TalkScriptNumber = Command.Num1
             State.CommandNumber = State.CommandNumber + 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
@@ -1776,21 +1797,6 @@ Sub UpdateScriptState(StateNumber As Long)
 
     ' Copy any state updates we've made back into the array of states
     ScriptStates(StateNumber) = State
-End Sub
-
-Sub TalkToCharacter(I As Long)
-    Dim TalkScriptNumber As Long
-    If Characters(I).TalkState = 0 Then
-        TalkScriptNumber = Characters(I).TalkScriptNumber
-    ElseIf Characters(I).TalkState = 1 Then
-        TalkScriptNumber = Characters(I).TalkScriptNumber2
-    Else
-        Die "Weird talk state: " + Str$(Characters(I).TalkState)
-    End If
-    If TalkScriptNumber Then
-        Talking = True
-        SetScriptState TALKING_SCRIPT_STATE, TalkScriptNumber
-    End If
 End Sub
 
 Sub RenderTextBox(FullText As String)

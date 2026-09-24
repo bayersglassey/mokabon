@@ -127,3 +127,8 @@
     bottom of the screen.
 [X] The way character scripts loop should probably happen within
     UpdateScriptState... so like, add State.Loops or something.
+[X] Holding shift plus a number key in map editor should set the
+    corresponding selected map tile to that currently under the
+    cursor.
+[ ] Add map tiles for houses etc.
+[ ] Add doors between maps.

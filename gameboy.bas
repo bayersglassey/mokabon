@@ -575,10 +575,11 @@ Do
                 MapEditorAnchorX = -1
             End If
         End If
-
-        ' Edit the map if a number key was pressed
         UpdateMapEditorAnchorRectangle
+
+        ' Handle number keys
         For I = 0 To 9
+            ' Edit the map if a number key was pressed.
             If KeyPressed(Asc("0") + I) Then
                 For X = RectangleX1 To RectangleX2
                     For Y = RectangleY1 To RectangleY2
@@ -586,6 +587,11 @@ Do
                         RenderMapTile X, Y
                     Next
                 Next
+            EndIf
+
+            ' Update a selected tile if shift + number key was pressed.
+            If KeyPressed(Asc(Mid$(")!@#$%^&*(", I + 1, 1))) Then
+                SelectedMapTiles(I + 1) = Map(PlayerX, PlayerY)
             EndIf
         Next
 

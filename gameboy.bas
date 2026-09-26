@@ -248,9 +248,10 @@ Dim Shared MapTilesetNumber As Long
 ' Solidity of map tiles, see Solidity field of type MapTile
 Const NOT_SOLID = 0
 Const SOLID = 1
-Const JUMP_DOWN = 2
-Const JUMP_LEFT = 3
-Const JUMP_RIGHT = 4
+Const JUMP_UP = 2
+Const JUMP_DOWN = 3
+Const JUMP_LEFT = 4
+Const JUMP_RIGHT = 5
 
 ' Map tiles aren't the same as the regular tiles stored in a Tileset.
 ' Each map tile is actually a 2x2 square of regular tiles, plus some
@@ -327,7 +328,8 @@ Const FACING_LEFT = 3
 Const STATE_STANDING = 0
 Const STATE_WALKING = 1
 Const STATE_JUMPING = 2
-Const STATE_GONE = 3 ' Don't render, collide with, etc this character
+Const STATE_SHORT_JUMPING = 3
+Const STATE_GONE = 4 ' Don't render, collide with, etc this character
 
 Type Character
     ' Character's name; should be unique within a given map
@@ -504,7 +506,8 @@ Do
                 NewX = PlayerX + FacingAddX(MoveDirection)
                 NewY = PlayerY + FacingAddY(MoveDirection)
                 Dim CanMove As Integer
-                CanMove = CanMoveTo(NewX, NewY, MoveDirection, PLAYER)
+                CanMove = CanMoveTo(PlayerX, PlayerY, NewX, NewY, _
+                    MoveDirection, PLAYER)
                 If ALWAYS_JUMP Then CanMove = 2 ' For debugging!
                 If CanMove = 1 Then
                     ' We are ok to walk to the new map position
@@ -516,6 +519,11 @@ Do
                     Characters(PLAYER).X = NewX + FacingAddX(MoveDirection)
                     Characters(PLAYER).Y = NewY + FacingAddY(MoveDirection)
                     Characters(PLAYER).State = STATE_JUMPING
+                ElseIf CanMove = 3 Then
+                    ' We are ok to short jump to the new map position
+                    Characters(PLAYER).X = NewX
+                    Characters(PLAYER).Y = NewY
+                    Characters(PLAYER).State = STATE_SHORT_JUMPING
                 End If
             End If
 
@@ -616,8 +624,21 @@ Do
             ' of that!..
             PrevKeyCode = EnterCode
         End If
-        If KeyPressed(F5Code) Then SaveMap MapFilename
-        If KeyPressed(F7Code) Then LoadMap MapFilename
+        If KeyPressed(F5Code) Then
+            SaveMap MapFilename
+            ShowMessage "Map saved!"
+        End If
+        If KeyPressed(F7Code) Then
+            LoadMap MapFilename
+            ShowMessage "Map loaded!"
+        End If
+
+        ' Reload various images, files, etc
+        If KeyPressed(Asc("l")) Then
+            LoadMapTiles
+            RenderMapImage
+            ShowMessage "Map tiles reloaded!"
+        End If
 
         ' Maybe switch to a different mode
         If KeyPressed(Asc("m")) Or KeyPressed(EnterCode) Then _
@@ -790,6 +811,7 @@ Sub PrintHelp
         Print " S: enter map scroll mode"
         Print " R: enter map resize mode"
         Print " C: enter character editor mode"
+        Print " L: reload images, map tiles, etc"
         Print " M or Enter: exit map editor mode"
     ElseIf Mode = MAP_SCROLL_MODE Then
         Print " Arrow keys: scroll the map"
@@ -995,6 +1017,15 @@ Sub RenderSelectionBox(X As Long, Y As Long, Width As Long, Height As Long)
     Line (X - 2, Y - 2)-(X + Width + 1, Y + Height + 1), _RGB(0, 0, 0), B
 End Sub
 
+Sub ShowMessage(Message As String)
+    _Dest 0 ' Print to the screen
+    Cls ' Clear the screen
+    Locate 1, 1
+    Print Message
+    _Display ' Show the message
+    Sleep ' Wait for a key to be pressed
+End Sub
+
 Sub Die(Message As String)
     _Dest 0 ' Print to the screen
     Cls ' Clear the screen
@@ -1068,6 +1099,8 @@ Sub LoadMapTiles
             ' Empty line or comment, ignore it!
         ElseIf Text = "solid" Then
             MapTiles(I).Solidity = SOLID
+        ElseIf Text = "jumpup" Then
+            MapTiles(I).Solidity = JUMP_UP
         ElseIf Text = "jumpdown" Then
             MapTiles(I).Solidity = JUMP_DOWN
         ElseIf Text = "jumpleft" Then
@@ -1352,27 +1385,42 @@ End Function
 
 ' Whether a character facing the indicated direction can move to the
 ' indicated map location.
-' Returns 1 if character can walk there, 2 if they can jump, 0 otherwise.
-Function CanMoveTo(X As Long, Y As Long, MoveDirection As Long, _
-    IgnoreCharacter As Long _
+' Returns 1 if character can walk there, 2 if they can jump, 3 if they can
+' "short jump", 0 otherwise.
+Function CanMoveTo( _
+    X As Long, Y As Long, NewX As Long, NewY As Long, _
+    MoveDirection As Long, IgnoreCharacter As Long _
 )
-    Dim Solidity As Long
+    Dim Solidity As Long, NewSolidity As Long
     Solidity = MapSolidityAt(X, Y)
+    NewSolidity = MapSolidityAt(NewX, NewY)
     CanMoveTo = 0
-    If Solidity = NOT_SOLID Then
-        If CollideCharacters(X, Y, IgnoreCharacter) = 0 Then _
+    If Solidity = JUMP_UP And MoveDirection = FACING_UP Then
+        If CollideCharacters(NewX, NewY, IgnoreCharacter) = 0 _
+            Then CanMoveTo = 3 ' Can short jump there
+    ElseIf _
+        NewSolidity = NOT_SOLID Or _
+        (NewSolidity = JUMP_UP And MoveDirection <> FACING_DOWN) _
+    Then
+        If CollideCharacters(NewX, NewY, IgnoreCharacter) = 0 Then _
             CanMoveTo = 1 ' Can walk there
-    ElseIf Solidity = JUMP_DOWN Then
+    ElseIf NewSolidity = JUMP_DOWN Then
+        NewSolidity = MapSolidityAt(NewX, NewY + 1)
         If MoveDirection = FACING_DOWN And _
-            CollideCharacters(X, Y + 1, IgnoreCharacter) = 0 _
+            (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
+            CollideCharacters(NewX, NewY + 1, IgnoreCharacter) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
-    ElseIf Solidity = JUMP_LEFT Then
+    ElseIf NewSolidity = JUMP_LEFT Then
+        NewSolidity = MapSolidityAt(NewX - 1, NewY)
         If MoveDirection = FACING_LEFT And _
-            CollideCharacters(X - 1, Y, IgnoreCharacter) = 0 _
+            (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
+            CollideCharacters(NewX - 1, NewY, IgnoreCharacter) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
-    ElseIf Solidity = JUMP_RIGHT Then
+    ElseIf NewSolidity = JUMP_RIGHT Then
+        NewSolidity = MapSolidityAt(NewX + 1, NewY)
         If MoveDirection = FACING_RIGHT And _
-            CollideCharacters(X + 1, Y, IgnoreCharacter) = 0 _
+            (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
+            CollideCharacters(NewX + 1, NewY, IgnoreCharacter) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
     End If
 End Function
@@ -1647,11 +1695,15 @@ Sub HandleCharacterAnimation(I As Long)
         If Facing = FACING_UP Then Characters(I).TileAddX = 4
         If Facing = FACING_LEFT Then Characters(I).TileAddX = 6
         If Facing = FACING_RIGHT Then Characters(I).TileAddX = 8
-    ElseIf State = STATE_WALKING Or State = STATE_JUMPING Then
+    ElseIf _
+        State = STATE_WALKING Or _
+        State = STATE_JUMPING Or _
+        State = STATE_SHORT_JUMPING _
+    Then
         Dim Frame As Long
         Frame = Characters(I).Frame
 
-        ' Jumping takes twice as long as walking
+        ' Jumping takes twice as long as walking or short jumping
         Dim Multiplier As Long
         Multiplier = 1
         If State = STATE_JUMPING Then Multiplier = 2
@@ -1738,15 +1790,22 @@ Sub RenderCharacter(I As Long)
         End If
     End If
 
-    If Character.State = STATE_JUMPING Then
+    If _
+        Character.State = STATE_JUMPING Or _
+        Character.State = STATE_SHORT_JUMPING _
+    Then
         ' When a character is jumping, we need to render their shadow
         RenderTile MiscCharacterTileset, 9, 0, Character.X, Character.Y, _
             X + Character.ExtraX, Y + Character.ExtraY
 
+        Dim Multiplier As Long
+        Multiplier = 1
+        If Character.State = STATE_JUMPING Then Multiplier = 2
+
         ' Character's sprite moves up and down as they jump
         Dim Frame As Long
         Frame = Character.Frame
-        Y = Y - (10 - Abs(Frame - 8))
+        Y = Y - (5 * Multiplier - Abs(Frame - 4 * Multiplier))
     End If
 
     ' Pokemon use a different character tileset

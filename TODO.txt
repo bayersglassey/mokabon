@@ -130,5 +130,6 @@
 [X] Holding shift plus a number key in map editor should set the
     corresponding selected map tile to that currently under the
     cursor.
-[ ] Add map tiles for houses etc.
+[X] Add a button to refresh maptiles.
+[X] Add map tiles for houses etc.
 [ ] Add doors between maps.

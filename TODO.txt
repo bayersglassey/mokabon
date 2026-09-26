@@ -132,4 +132,5 @@
     cursor.
 [X] Add a button to refresh maptiles.
 [X] Add map tiles for houses etc.
+[X] Tile selection mode: need to scroll if there are lots of map tiles...
 [ ] Add doors between maps.

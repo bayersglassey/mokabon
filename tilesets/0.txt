@@ -239,3 +239,8 @@ solid
 # wide vertical path bottom-right
 00 10
 00 21
+
+# bush
+solid
+2d 2e
+3d 3e

@@ -1548,23 +1548,28 @@ Sub RenderMapTiles
     ' Called when Mode = TILE_SELECTOR_MODE.
     ' Render all map tiles as a grid for the user to select from.
 
-    Dim X As Long, Y As Long, I As Long
-    Const ExtraX = 16
-    Const ExtraY = 16
+    Const ExtraX = (TrueScreenWidth - TileSelectorWidth * MapTileWidth) / 2
+    Const ExtraY = TrueScreenHeight / 2 - 8
 
     _Dest ScreenImage
 
+    Dim SelectedX As Long, SelectedY As Long
+    SelectedX = SelectedMapTileNumber Mod TileSelectorWidth
+    SelectedY = Int(SelectedMapTileNumber / TileSelectorWidth)
+
     ' Draw all map tiles as a grid
+    Dim X As Long, Y As Long, I As Long
     For I = 0 To NumMapTiles - 1
         X = I Mod TileSelectorWidth
         Y = Int(I / TileSelectorWidth)
-        RenderMapTileAt MapTiles(I), X, Y, ExtraX, ExtraY
+        RenderMapTileAt MapTiles(I), X, Y - SelectedY, _
+            ExtraX, ExtraY
     Next
 
     ' Draw a box around the selected map tile
-    X = SelectedMapTileNumber Mod TileSelectorWidth
-    Y = Int(SelectedMapTileNumber / TileSelectorWidth)
-    RenderSelectionBox X * MapTileWidth + ExtraX, Y * MapTileHeight + ExtraY, _
+    RenderSelectionBox _
+        SelectedX * MapTileWidth + ExtraX, _
+        ExtraY, _
         MapTileWidth, MapTileHeight
 End Sub
 

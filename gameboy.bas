@@ -543,7 +543,10 @@ Do
             End If
 
             ' Handle gameboy's "A" button
-            If KeyPressed(Asc("z")) Then
+            If _
+                KeyPressed(Asc("z")) And _
+                Characters(PLAYER).State = STATE_STANDING _
+            Then
                 NewX = PlayerX + FacingAddX(Characters(Player).Facing)
                 NewY = PlayerY + FacingAddY(Characters(Player).Facing)
                 I = CollideCharacters(NewX, NewY, PLAYER, True)

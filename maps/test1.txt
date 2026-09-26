@@ -9,12 +9,12 @@ tiles  7   11
 15 D D D D D 11
 15 D D D D D 11
 15 D D D D D 11
-15 D D D D D 32
+32 D D D D D 11
 15 D D D D D 11
 F F F F F F F
 
 facing d
-position  6  8 
+position  3  0 
 
 character
     name DOOR1
@@ -32,7 +32,7 @@ character
     hidden
     start_y  0 
     facing d
-    position  6  8 
+    position  0  8 
     touch
         map test0 DOOR2
     end

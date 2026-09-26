@@ -628,53 +628,16 @@ Do
         ' 0-9 at the bottom of the screen
         RenderSelectedMapTiles
 
-        ' Map saving/loading
-        If KeyPressed(Asc("f")) Then
-            _Dest 0
-            Print "Current map filename: " + MapFilename
-            Input "Change map filename: ", MapFilename
-            FixMapFilename
-            ' The enter key was just pressed (because we used Input), so
-            ' make sure we don't immediately exit the map editor because
-            ' of that!..
-            PrevKeyCode = EnterCode
-        End If
-        If KeyPressed(F5Code) Then
-            SaveMap MapFilename
-            ShowMessage "Map saved!"
-        End If
-        If KeyPressed(F7Code) Then
-            LoadMap MapFilename
-            ShowMessage "Map loaded!"
-        End If
-
-        ' Reload various images, files, etc
-        If KeyPressed(Asc("l")) Then
-            LoadMapTiles
-            RenderMapImage
-            ShowMessage "Map tiles reloaded!"
-        End If
-
         ' Maybe switch to a different mode
-        If KeyPressed(Asc("m")) Or KeyPressed(EnterCode) Then _
-            Mode = GAME_MODE
-        If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
-        If KeyPressed(Asc("s")) Then Mode = MAP_SCROLL_MODE
-        If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
-        If KeyPressed(Asc("c")) Then
-            Mode = CHARACTER_EDITOR_MODE
-            SelectedCharacter = 0
-        End If
+        HandleModeSwitching
     ElseIf Mode = MAP_SCROLL_MODE Then
         RenderMap
         HandleMapScrollMode
-        If KeyPressed(Asc("s")) Or KeyPressed(EnterCode) Then _
-            Mode = MAP_EDITOR_MODE
+        HandleModeSwitching
     ElseIf Mode = MAP_RESIZE_MODE Then
         RenderMap
         HandleMapResizeMode
-        If KeyPressed(Asc("r")) Or KeyPressed(EnterCode) Then _
-            Mode = MAP_EDITOR_MODE
+        HandleModeSwitching
     ElseIf Mode = TILE_SELECTOR_MODE Then
         ' Change the currently selected map tile
         If KeyPressed(UpCode) Then SelectedMapTileNumber = _
@@ -704,8 +667,7 @@ Do
         Next
 
         ' Change modes
-        If KeyPressed(Asc("t")) Or KeyPressed(EnterCode) Then _
-            Mode = MAP_EDITOR_MODE
+        HandleModeSwitching
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         If KeyPressed(Asc(" ")) Then
             If SelectedCharacter Then
@@ -752,8 +714,8 @@ Do
         For I = PLAYER + 1 To UBound(Characters)
             RenderCharacter I
         Next
-        If KeyPressed(Asc("c")) Or KeyPressed(EnterCode) Then _
-            Mode = MAP_EDITOR_MODE
+
+        HandleModeSwitching
     Else
         Die "Unknown mode: " + Mode
     End If
@@ -808,6 +770,24 @@ Function KeyPressed(KeyCode AS Long)
     End If
 End Function
 
+Sub PrintLine
+    Print "-----------------------------------"
+End Sub
+
+Sub PrintEditorHelp
+    PrintLine
+    Print " L: reload images, map tiles, etc"
+    Print " F: change map filename"
+    Print " F5: save map"
+    Print " F7: load map"
+    Print " M: switch to map editor mode"
+    Print " T: switch to tile selection mode"
+    Print " S: switch to map scroll mode"
+    Print " R: switch to map resize mode"
+    Print " C: switch to character editor mode"
+    Print " Enter: return to game"
+End Sub
+
 Sub PrintHelp
     _Dest 0
     Locate 2, 2
@@ -819,38 +799,31 @@ Sub PrintHelp
         Print " X: gameboy's B button"
         Print " C: gameboy's Select button"
         Print " Enter: gameboy's Start button"
-        Print " M: enter map editor mode"
-        Print " F: change map filename"
-        Print " F5: save map"
-        Print " F7: load map"
+        Print " M: switch to map editor mode"
     ElseIf Mode = MAP_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: place tile"
         Print " A: set/unset anchor point"
-        Print " T: enter tile selection mode"
-        Print " S: enter map scroll mode"
-        Print " R: enter map resize mode"
-        Print " C: enter character editor mode"
-        Print " L: reload images, map tiles, etc"
-        Print " M or Enter: exit map editor mode"
+        PrintEditorHelp
     ElseIf Mode = MAP_SCROLL_MODE Then
         Print " Arrow keys: scroll the map"
-        Print " C or Enter: exit map scroll mode"
+        PrintEditorHelp
     ElseIf Mode = MAP_RESIZE_MODE Then
         Print " Arrow keys: resize the map"
-        Print " R or Enter: exit map resize mode"
+        PrintEditorHelp
     ElseIf Mode = TILE_SELECTOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: choose tile"
-        Print " T or Enter: exit tile selection mode"
+        PrintEditorHelp
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " Space: select/unselect character"
         Print " I: add a hidden character (for signs, doors, etc)"
-        Print " C or Enter: exit character editor mode"
+        PrintEditorHelp
     Else
         Die "Unknown mode: " + Mode
     End If
+    PrintLine
     Print " Escape: quit the program"
 End Sub
 
@@ -1663,6 +1636,46 @@ Sub RenderScreen
     ' Draw the game boy's screen (that is, ScreenImage) on the actual screen
     ' (that is, the program's window)
     _PutImage (0, 0)-(ScreenWidth - 1, ScreenHeight - 1), ScreenImage, 0
+End Sub
+
+Sub HandleModeSwitching
+
+    ' Map saving/loading
+    If KeyPressed(Asc("f")) Then
+        _Dest 0
+        Print "Current map filename: " + MapFilename
+        Input "Change map filename: ", MapFilename
+        FixMapFilename
+        ' The enter key was just pressed (because we used Input), so
+        ' make sure we don't immediately exit the map editor because
+        ' of that!..
+        PrevKeyCode = EnterCode
+    End If
+    If KeyPressed(F5Code) Then
+        SaveMap MapFilename
+        ShowMessage "Map saved!"
+    End If
+    If KeyPressed(F7Code) Then
+        LoadMap MapFilename
+        ShowMessage "Map loaded!"
+    End If
+
+    ' Reload various images, files, etc
+    If KeyPressed(Asc("l")) Then
+        LoadMapTiles
+        RenderMapImage
+        ShowMessage "Map tiles reloaded!"
+    End If
+
+    If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
+    If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
+    If KeyPressed(Asc("s")) Then Mode = MAP_SCROLL_MODE
+    If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
+    If KeyPressed(Asc("c")) Then
+        Mode = CHARACTER_EDITOR_MODE
+        SelectedCharacter = 0
+    End If
+    If KeyPressed(EnterCode) Then Mode = GAME_MODE
 End Sub
 
 Sub HandleEditorArrowKeys

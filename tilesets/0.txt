@@ -1,60 +1,60 @@
 ###############################################################
 # OUTSIDE STUFF
 
-# 0: white ground
+# white ground
 00 00
 00 00
 
-# 1: white ground with a bit of light grass
+# white ground with a bit of light grass
 00 00
 39 00
 
-# 2: light grass
+# light grass
 39 39
 39 39
 
-# 3: tree
+# tree
 solid
 40 41
 50 51
 
-# 4: tall grass
+# tall grass
 pokemon
 52 52
 52 52
 
-# 5: poles
+# poles
 solid
 0e 0e
 55 55
 
-# 6: block
+# block
 solid
 2a 2b
 3a 3b
 
-# 7: path
+# path
 5b 5b
 5b 5b
 
-# 8: dirt
+# dirt
 2c 2c
 2c 2c
 
-# 9: dirt with flower in bottom-right
+# dirt with flower in bottom-right
 2c 2c
 2c 03
 
-# a: dirt with flower in top-left
+# dirt with flower in top-left
 03 2c
 2c 2c
 
-# b: light grass with fence
+# light grass with fence
 jumpdown
 39 39
 37 37
 
-# c: light grass with gate
+# light grass with gate
 39 39
 3c 3c
 

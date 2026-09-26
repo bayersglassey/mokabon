@@ -72,6 +72,19 @@
 [X] Implement scripts
     [X] Character scripts (walking around, etc)
     [X] Talking scripts
+[X] When talking, we need the ability to give the player binary choices.
+    Something like:
+        choose yes no
+    ...but then, what is their effect?.. do we introduce labels and jumps
+    within scripts?.. or can scripts call each other?.. or are there
+    sub-scripts (i.e. "blocks")?.. how about blocks like:
+        if choose Yes No Do you want a Magikarp?
+         ...
+        else
+         ...
+        end
+    ...where "else" and "end" are command types, and we just search for
+    them linearly at runtime.
 [ ] Implement tileset-based menus
     [ ] Scripts displaying text with a "next" button, like a character
         is talking to you
@@ -115,6 +128,34 @@
         images, and then a way to render the battle screen.
         To begin with, can just be a simple text-based menu.
 
+[ ] Add items... just characters with IsItem = True?..
+    We probably want a STATE_ITEM, so we don't have to add a bunch of
+    IsItem checks everywhere.
+    For items, TileStartX is *not* controlled by animation, and Facing
+    is unused.
+    When saving/loading, items show up as "item" instead of "character",
+    and "start_x" only appears under items, not characters.
+    [ ] In CHARACTER_EDITOR_MODE, have buttons for toggling IsHidden, IsItem,
+        IsPokemon.
+        Have buttons for incrementing/decrementing TileStartX and TileStartY.
+[ ] Add player's inventory
+    [ ] Type Item: Name As String, Count As Long, IsHidden As Integer
+        ...where hidden items can be used to implement global variables.
+        Yes, it's a hack.
+    [ ] Add Start button menu, with an ITEMS option
+    [ ] Add script commands for adding items to inventory
+    [ ] Add script commands like:
+            if itemcount pokeball >= 3
+             ...
+            else
+             ...
+            end
+    [ ] Need a way to save/load the game, including player's position and
+        items, etc.
+    [ ] Add a bike item, when you have it, gb's Select button puts you
+        on/off it.
+[ ] Add money
+
 
 ### VARIOUS EASY FIXES TO DO WHENEVER WE HAVE THE CHANCE:
 [X] Update help text
@@ -139,3 +180,9 @@
     ScriptsStart, ScriptsLength.
     And then we can e.g. remove the check when parsing "script" which
     requires it to come before "talk".
+[ ] In MAP_SCROLL_MODE, characters should also be "scrolled" (X, Y,
+    StartX, and StartY).
+[ ] Map editor: add ability to copy rectangular areas of the map around
+[ ] Currently, you run "onto the roof" at the back of a house...
+    instead, script should be triggered when you "press against" the
+    back of the house.

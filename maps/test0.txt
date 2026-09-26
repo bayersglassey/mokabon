@@ -102,6 +102,11 @@ character
     position  4  3 
     talk
         say Shhhhh! I'm hiding`behind this tree!
+        if choose No Yes Wanna join me?
+            say No way, you'll`give me away!
+        else
+            say Okay, then shoo!
+        end
     end
 end
 

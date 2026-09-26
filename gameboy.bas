@@ -3,8 +3,9 @@ Option Base 1 ' Array indexes start at 1, not 0
 
 Const True = -1
 Const False = 0
-Dim Shared QUOTE As String
+Dim Shared QUOTE As String, NEWLINE As String
 QUOTE = Chr$(34) ' Literal quote character (")
+NEWLINE = Chr$(13) ' Literal newline character
 
 ' Frames per second (how fast the animation is)
 Const FPS = 30
@@ -90,6 +91,7 @@ SetCharacterMap 1, 0, 4, " "
 SetCharacterMap 1, 0, 6, "'"
 SetCharacterMap 1, 3, 6, "-"
 SetCharacterMap 1, 6, 6, "?!."
+SetCharacterMap 1, 13, 6, ">"
 SetCharacterMap 1, 0, 7, "$*"
 SetCharacterMap 1, 3, 7, "/,"
 SetCharacterMap 1, 6, 7, "0123456789"
@@ -166,11 +168,15 @@ Const COMMAND_FACE = 3
 Const COMMAND_SAY = 4
 Const COMMAND_TALK = 5
 Const COMMAND_MAP = 6
+Const COMMAND_IF_CHOOSE = 7
+Const COMMAND_ELSE = 8
+Const COMMAND_END = 9
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
     Str1 As String
     Str2 As String
+    Str3 As String
     Num1 As Long
     Num2 As Long
 End Type
@@ -201,6 +207,9 @@ ReDim Shared ScriptStates(1) As ScriptState
 Const TALKING_SCRIPT_STATE = 1
 Dim Shared Talking As Integer
 Dim Shared TalkingText As String
+Dim Shared TalkingChoiceStr1 As String
+Dim Shared TalkingChoiceStr2 As String
+Dim Shared TalkingChoice As Integer ' True or False
 Talking = False
 
 
@@ -485,7 +494,11 @@ Do
         ' We're talking to another character, so pause the game while we
         ' run the talk script...
 
-        If TalkingText <> "" And KeyPressed(Asc("z")) Then TalkingText = ""
+        If TalkingText <> "" Then
+            If KeyPressed(LeftCode) Then TalkingChoice = False
+            If KeyPressed(RightCode) Then TalkingChoice = True
+            If KeyPressed(Asc("z")) Then TalkingText = ""
+        End If
 
         If TalkingText = "" Then
             UpdateScriptState TALKING_SCRIPT_STATE
@@ -502,7 +515,7 @@ Do
         For I = 1 To UBound(Characters)
             RenderCharacter I
         Next
-        If TalkingText <> "" Then RenderTextBox TalkingText
+        If TalkingText <> "" Then RenderTalkingText
     ElseIf Mode = GAME_MODE Then
         If KeyPressed(Asc("m")) Then
             Mode = MAP_EDITOR_MODE
@@ -983,8 +996,9 @@ Sub WriteText(Text As String)
     ' the screen, using the tiles in FontTileset
     For I = 1 To Len(Text)
         Ch = Asc(Mid$(Text, I, 1)) ' Get the next character from Text
-        If Ch = Asc("`") Then
-            ' Backtick means newline!..
+        If Ch = Asc("`") Or Ch = 13 Then
+            ' NOTE: backtick ("`") means newline, so we can easily include
+            ' newlines in "say" commands in scripts!..
             LineWidth = 0
             WriteX = WriteStartX
             WriteY = WriteY + 1
@@ -1937,6 +1951,7 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
     Dim Start As Long
     Dim Script As Script
     Dim Text As String
+    Dim Depth As Long ' For parsing if...else...end
     Start = UBound(ScriptCommands) + 1
     Do
         Line Input #File, Text
@@ -1976,8 +1991,32 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
             ScriptCommands(I).Str1 = Token
             NextToken
             ScriptCommands(I).Str2 = Token
+        ElseIf Token = "if" Then
+            NextToken
+            If Token = "choose" Then
+                I = AddScriptCommand(COMMAND_IF_CHOOSE)
+                NextToken
+                ScriptCommands(I).Str1 = Token
+                NextToken
+                ScriptCommands(I).Str2 = Token
+                ScriptCommands(I).Str3 = ParseText
+                Depth = Depth + 1
+            Else
+                ParseDie Text
+            End If
+        ElseIf Token = "else" Then
+            If Depth > 0 Then
+                I = AddScriptCommand(COMMAND_ELSE)
+            Else
+                ParseDie Text
+            End If
         ElseIf Token = "end" Then
-            Exit Do
+            If Depth > 0 Then
+                I = AddScriptCommand(COMMAND_END)
+                Depth = Depth - 1
+            Else
+                Exit Do
+            End If
         Else
             ParseDie Text
         End If
@@ -2008,14 +2047,18 @@ End Function
 
 Sub WriteScript(File As Long, Script As Script)
     Print #File, "    "; ScriptTypeStr$(Script.ScriptType)
-    Dim I As Long
+    Dim I As Long, J As Long, Depth As Long
     For I = Script.Start To Script.Start + Script.Length - 1
         Dim Command As ScriptCommand
         Command = ScriptCommands(I)
+        For J = 1 To Depth
+            Print #File, "    ";
+        Next
         If Command.CommandType = COMMAND_WAIT Then
             Print #File, "        wait "; Command.Num1
         ElseIf Command.CommandType = COMMAND_WALK Then
-            Print #File, "        walk "; FacingStr$(Command.Num1); Command.Num2
+            Print #File, "        walk "; FacingStr$(Command.Num1); _
+                Command.Num2
         ElseIf Command.CommandType = COMMAND_JUMP Then
             Print #File, "        jump "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_FACE Then
@@ -2026,6 +2069,15 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        talk "; Command.Num1
         ElseIf Command.CommandType = COMMAND_MAP Then
             Print #File, "        map "; Command.Str1; " "; Command.Str2
+        ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
+            Print #File, "        if choose "; Command.Str1; " "; _
+                Command.Str2; " "; Command.Str3
+            Depth = Depth + 1
+        ElseIf Command.CommandType = COMMAND_ELSE Then
+            Print #File, "    else"
+        ElseIf Command.CommandType = COMMAND_END Then
+            Print #File, "    end"
+            Depth = Depth - 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2136,6 +2188,8 @@ Sub UpdateScriptState(StateNumber As Long)
             Else
                 ' Talk some more...
                 TalkingText = Command.Str1
+                TalkingChoiceStr1 = ""
+                TalkingChoiceStr2 = ""
                 State.Frame = State.Frame + 1
                 Exit Do
             End If
@@ -2159,6 +2213,37 @@ Sub UpdateScriptState(StateNumber As Long)
             ' Exit this subroutine/script, and restart the game's main loop!
             RestartMainLoop = True
             Exit Sub
+        ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
+            If State.Frame = 1 Then
+                ' Done choosing
+                If TalkingChoice Then
+                    ' Player picked the first choice!
+                    State.CommandNumber = State.CommandNumber + 1
+                Else
+                    ' Player picked the second choice, so jump into the
+                    ' else-branch of the if!
+                    State.CommandNumber = FindScriptStateCommandNumber( _
+                        State, COMMAND_ELSE) + 1
+                End If
+                State.Frame = 0
+            Else
+                ' Make a choice...
+                TalkingText = Command.Str3
+                TalkingChoiceStr1 = Command.Str1
+                TalkingChoiceStr2 = Command.Str2
+                TalkingChoice = False
+                State.Frame = State.Frame + 1
+                Exit Do
+            End If
+        ElseIf Command.CommandType = COMMAND_ELSE Then
+            ' We've reached the "else" if an "if" block, so let's jump to
+            ' the "end"
+            State.CommandNumber = FindScriptStateCommandNumber( _
+                State, COMMAND_END) + 1
+        ElseIf Command.CommandType = COMMAND_END Then
+            ' We've reached the "end" if an "if" block... it has no effect,
+            ' so just skip over it
+            State.CommandNumber = State.CommandNumber + 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2231,9 +2316,61 @@ Sub RenderTextBox(Text As String)
     WriteText Text
 End Sub
 
+Sub RenderTalkingText
+    Dim Text As String
+    Text = TalkingText
+    If TalkingChoiceStr1 <> "" Then
+        Text = Text + NEWLINE
+        If TalkingChoice Then
+            Text = Text + " "
+        Else
+            Text = Text + ">"
+        EndIf
+        Text = Text + TalkingChoiceStr1 + " "
+        If TalkingChoice Then
+            Text = Text + ">"
+        Else
+            Text = Text + " "
+        EndIf
+        Text = Text + TalkingChoiceStr2
+    End If
+    RenderTextBox Text
+End Sub
+
 Sub FixMapFilename
     If Not Instr(MapFilename, "/") Then _
         MapFilename = "maps/" + MapFilename
     If Not Instr(MapFilename, ".") Then _
         MapFilename = MapFilename + ".txt"
 End Sub
+
+Function FindScriptStateCommandNumber(State As ScriptState, _
+    CommandType As Integer _
+)
+    ' Finds the next CommandNumber for the given ScriptState for which the
+    ' corresponding command has the given CommandType.
+    ' So for instance, in this script:
+    '
+    '   if choose yes no blabla
+    '     ...
+    '   else
+    '     ...
+    '   end
+    '
+    ' If the current CommandNumber is at the "if", and we're looking for
+    ' the "else", then this function would be used to find its CommandNumber
+    ' within that script.
+    Dim Script As Script
+    Script = Scripts(State.ScriptNumber)
+    Dim CommandNumber As Long
+    CommandNumber = State.CommandNumber
+    Do
+        If CommandNumber > Script.Length Then Die _
+            "Couldn't find command of type " + Str$(CommandType) _
+            + " in script " + Str$(State.ScriptNumber)
+        If ScriptCommands(Script.Start + CommandNumber - 1).CommandType = _
+            CommandType Then Exit Do
+        CommandNumber = CommandNumber + 1
+    Loop
+    FindScriptStateCommandNumber = CommandNumber
+End Function

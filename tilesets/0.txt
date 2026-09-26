@@ -253,3 +253,7 @@ solid
 # cave entrance
 48 49
 58 59
+
+# house roof middle secret
+07 07
+17 17

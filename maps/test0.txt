@@ -15,7 +15,7 @@ B B B C C B B B 2C 0 2D 3 C B C 3 0 0 0 0 0 0
 0 0 0 0 0 0 0 0 0 0 2 2 0 0 0 0 0 5 0 0 0 0
 0 0 0 0 0 0 1 E F F 10 2 0 0 0 0 0 0 0 0 0 0
 0 0 0 0 0 0 E 11 D D 15 10 1 0 0 0 0 0 0 0 0 0
-0 0 E F F F F F D D 15 15 2 0 0 0 18 19 19 19 1A 0
+0 0 E F F F F F D D 15 15 2 0 0 0 18 19 33 19 1A 0
 0 0 11 D 13 13 11 12 13 13 14 15 0 0 0 0 1B 1E 1D 1F 20 0
 0 0 8 7 8 2 12 13 13 13 13 14 0 0 0 0 0 0 0 0 0 0
 0 0 6 7 6 2 2 2 2 2 0 0 0 0 0 0 0 0 0 0 0 0
@@ -135,6 +135,17 @@ character
     position  19  9 
     touch
         map test1 DOOR1
+    end
+end
+
+character
+    name DOOR2
+    hidden
+    start_y  0 
+    facing d
+    position  18  14 
+    touch
+        map test1 DOOR2
     end
 end
 

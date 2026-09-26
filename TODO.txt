@@ -98,6 +98,8 @@
     Some of them you just step on, some of them you press "A" on, etc.
 [ ] Implement doors...
     (Maybe these are just triggers, which use a "change map" action)
+    [X] Doors to houses and caves
+    [ ] Support "running off the side of the map" as a door trigger
 [ ] Implement pokemon battles
     [ ] First of all, you need your own pokemon...
     [ ] Patches of tall grass should have pokemon...
@@ -133,4 +135,7 @@
 [X] Add a button to refresh maptiles.
 [X] Add map tiles for houses etc.
 [X] Tile selection mode: need to scroll if there are lots of map tiles...
-[ ] Add doors between maps.
+[ ] Replace Character's TalkScriptsStart, TalkScriptsLength with just
+    ScriptsStart, ScriptsLength.
+    And then we can e.g. remove the check when parsing "script" which
+    requires it to come before "talk".

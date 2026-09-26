@@ -1,0 +1,29 @@
+tileset  0 
+
+tiles  7   11 
+16 13 13 32 13 13 17
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+15 D D D D D 11
+F F F F F F F
+
+facing d
+position  3  0 
+
+character
+    name DOOR1
+    hidden
+    start_y  0 
+    facing d
+    position  3  0 
+    touch
+        map test0 DOOR1
+    end
+end
+

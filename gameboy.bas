@@ -165,21 +165,25 @@ Const COMMAND_JUMP = 2
 Const COMMAND_FACE = 3
 Const COMMAND_SAY = 4
 Const COMMAND_TALK = 5
+Const COMMAND_MAP = 6
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
     Str1 As String
+    Str2 As String
     Num1 As Long
     Num2 As Long
 End Type
 
+Const SCRIPT_LOOP = 0
+Const SCRIPT_TALK = 1
+Const SCRIPT_TOUCH = 2
+
 Type Script
+    ScriptType As Integer ' SCRIPT_LOOP, etc
     CharacterNumber As Long ' Index into Characters
     Start As Long ' Index into ScriptCommands
     Length As Long ' Number of commands in this script
-
-    ' True if this script should loop around to the beginning, otherwise False
-    ShouldLoop As Integer
 End Type
 
 Type ScriptState
@@ -205,6 +209,9 @@ Talking = False
 
 ' The image on which we draw the map
 Dim Shared MapImage As Long
+
+' Set when a script triggers a map change
+Dim Shared RestartMainLoop As Integer
 
 ' Set up the map tilesets, which all use the same image, but whose tiles
 ' come from different offsets within that image.
@@ -240,7 +247,7 @@ InitializeMapTileset 17, 1162
 InitializeMapTileset 18, 1220
 
 ' The file to which we will save the map
-Dim MapFilename As String
+Dim Shared MapFilename As String
 
 ' Index into MapTilesets
 Dim Shared MapTilesetNumber As Long
@@ -273,7 +280,7 @@ End Type
 
 ' NOTE: MaxMapTiles is an arbitrary number, just big enough to support
 ' all map tile files we ever try to load (see LoadMapTiles)
-Const MaxMapTiles = 50
+Const MaxMapTiles = 200
 Dim Shared MapTiles(0 To MaxMapTiles - 1) As MapTile
 
 ' Current number of maptiles, i.e. entries of MapTiles
@@ -388,6 +395,9 @@ Type Character
     ' Index into ScriptStates, or 0
     ScriptStateNumber As Long
 
+    ' Index into Scripts, or 0
+    TouchScriptNumber As Long
+
     ' Index into Scripts
     TalkScriptsStart As Long
 
@@ -479,6 +489,11 @@ Do
 
         If TalkingText = "" Then
             UpdateScriptState TALKING_SCRIPT_STATE
+            If RestartMainLoop Then
+                ' We loaded a different map, so restart the main loop!
+                RestartMainLoop = False
+                _Continue
+            End If
             HandleCharacterAnimation _
                 Scripts(TALKING_SCRIPT_STATE).CharacterNumber
         End If
@@ -531,7 +546,7 @@ Do
             If KeyPressed(Asc("z")) Then
                 NewX = PlayerX + FacingAddX(Characters(Player).Facing)
                 NewY = PlayerY + FacingAddY(Characters(Player).Facing)
-                I = CollideCharacters(NewX, NewY, PLAYER)
+                I = CollideCharacters(NewX, NewY, PLAYER, True)
                 If I > 0 Then
                     If Characters(I).State = STATE_STANDING Then
                         ' We're talking to another character!..
@@ -615,10 +630,7 @@ Do
             _Dest 0
             Print "Current map filename: " + MapFilename
             Input "Change map filename: ", MapFilename
-            If Not Instr(MapFilename, "/") Then _
-                MapFilename = "maps/" + MapFilename
-            If Not Instr(MapFilename, ".") Then _
-                MapFilename = MapFilename + ".txt"
+            FixMapFilename
             ' The enter key was just pressed (because we used Input), so
             ' make sure we don't immediately exit the map editor because
             ' of that!..
@@ -698,7 +710,8 @@ Do
                 SelectedCharacter = 0
             Else
                 ' Attempt to select a character
-                SelectedCharacter = CollideCharacters(PlayerX, PlayerY, PLAYER)
+                SelectedCharacter = CollideCharacters(PlayerX, PlayerY, _
+                    PLAYER, True)
             End If
         End If
         If SelectedCharacter Then
@@ -726,6 +739,10 @@ Do
             HandleCharacterAnimation SelectedCharacter
         Else
             HandleEditorArrowKeys
+            If KeyPressed(Asc("i")) Then
+                AddHiddenCharacter
+                SelectedCharacter = UBound(Characters)
+            End If
         End If
 
         RenderMap
@@ -826,6 +843,7 @@ Sub PrintHelp
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " Space: select/unselect character"
+        Print " I: add a hidden character (for signs, doors, etc)"
         Print " C or Enter: exit character editor mode"
     Else
         Die "Unknown mode: " + Mode
@@ -1177,12 +1195,10 @@ Sub WriteCharacter(I As Long, File As Long)
         WriteScript File, _
             Scripts( _
                 ScriptStates(Characters(I).ScriptStateNumber).ScriptNumber _
-            ), _
-            "script"
+            )
     For J = 1 To Characters(I).TalkScriptsLength
         WriteScript File, _
-            Scripts(Characters(I).TalkScriptsStart + J - 1), _
-            "talk"
+            Scripts(Characters(I).TalkScriptsStart + J - 1)
     Next
     Print #File, "end"
 End Sub
@@ -1217,7 +1233,12 @@ Sub LoadMap(Filename As String)
     LineNumber = 0
     MapTilesetNumber = 0
 
-    ReDim _Preserve Characters(1) As Character
+    ReDim ScriptCommands(0) As ScriptCommand
+    ReDim Scripts(0) As Script
+    ReDim ScriptStates(1) As ScriptState
+    Talking = False
+
+    ReDim Characters(1) As Character
     InitializeCharacter PLAYER
     Characters(PLAYER).Name = "PLAYER"
 
@@ -1296,17 +1317,28 @@ Sub InitializeCharacter(I As Long)
     Characters(I).TileStartY = 0
     Characters(I).TileAddX = 0
     Characters(I).TileAddY = 0
-    Characters(I).Facing = FACING_UP
+    Characters(I).Facing = FACING_DOWN
     Characters(I).State = STATE_STANDING
     Characters(I).Frame = 0
     Characters(I).OtherFoot = 0
     Characters(I).ScriptStateNumber = 0
+    Characters(I).TouchScriptNumber = 0
     Characters(I).TalkScriptsStart = 0
     Characters(I).TalkScriptsLength = 0
     Characters(I).TalkScriptNumber = 0
-    Characters(I).StartX = 0
-    Characters(I).StartY = 0
-    Characters(I).StartFacing = FACING_UP
+    SetCharacterStartFields I
+End Sub
+
+Sub AddHiddenCharacter
+    Dim I As Long
+    I = UBound(Characters) + 1
+    ReDim _Preserve Characters(I) As Character
+    InitializeCharacter I
+    Characters(I).IsHidden = True
+    Characters(I).X = PlayerX
+    Characters(I).Y = PlayerY
+    Characters(I).Facing = FACING_DOWN
+    SetCharacterStartFields I
 End Sub
 
 Sub ParseCharacter(File As Long)
@@ -1341,18 +1373,29 @@ Sub ParseCharacter(File As Long)
             NextToken
             Characters(I).Y = Val(Token)
         ElseIf Token = "script" Then
+            If Characters(I).ScriptStateNumber > 0 Then
+                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
+                    "script" + QUOTE + " multiple times"
+            End If
             If Characters(I).TalkScriptsStart < UBound(Scripts) + 1 Then
                 Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
                     "talk" + QUOTE + " before " + QUOTE + "script" + QUOTE
             End If
-            ParseScript File, I, True
+            ParseScript File, I, SCRIPT_LOOP
             Characters(I).TalkScriptsStart = UBound(Scripts) + 1
             ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
                 As ScriptState
             SetScriptState UBound(ScriptStates), UBound(Scripts)
             Characters(I).ScriptStateNumber = UBound(ScriptStates)
         ElseIf Token = "talk" Then
-            ParseScript File, I, False
+            ParseScript File, I, SCRIPT_TALK
+        ElseIf Token = "touch" Then
+            If Characters(I).TouchScriptNumber > 0 Then
+                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
+                    "touch" + QUOTE + " multiple times"
+            End If
+            ParseScript File, I, SCRIPT_TOUCH
+            Characters(I).TouchScriptNumber = UBound(Scripts)
         ElseIf Token = "end" Then
             Exit Do
         End If
@@ -1363,6 +1406,11 @@ Sub ParseCharacter(File As Long)
 
     ResetCharacterScripts I
 
+    ' Set the "start" versions of various fields of the player character
+    SetCharacterStartFields I
+End Sub
+
+Sub SetCharacterStartFields(I As Long)
     ' Set the "start" versions of various fields of the player character
     Characters(I).StartX = Characters(I).X
     Characters(I).StartY = Characters(I).Y
@@ -1396,31 +1444,31 @@ Function CanMoveTo( _
     NewSolidity = MapSolidityAt(NewX, NewY)
     CanMoveTo = 0
     If Solidity = JUMP_UP And MoveDirection = FACING_UP Then
-        If CollideCharacters(NewX, NewY, IgnoreCharacter) = 0 _
+        If CollideCharacters(NewX, NewY, IgnoreCharacter, False) = 0 _
             Then CanMoveTo = 3 ' Can short jump there
     ElseIf _
         NewSolidity = NOT_SOLID Or _
         (NewSolidity = JUMP_UP And MoveDirection <> FACING_DOWN) _
     Then
-        If CollideCharacters(NewX, NewY, IgnoreCharacter) = 0 Then _
+        If CollideCharacters(NewX, NewY, IgnoreCharacter, False) = 0 Then _
             CanMoveTo = 1 ' Can walk there
     ElseIf NewSolidity = JUMP_DOWN Then
         NewSolidity = MapSolidityAt(NewX, NewY + 1)
         If MoveDirection = FACING_DOWN And _
             (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
-            CollideCharacters(NewX, NewY + 1, IgnoreCharacter) = 0 _
+            CollideCharacters(NewX, NewY + 1, IgnoreCharacter, False) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
     ElseIf NewSolidity = JUMP_LEFT Then
         NewSolidity = MapSolidityAt(NewX - 1, NewY)
         If MoveDirection = FACING_LEFT And _
             (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
-            CollideCharacters(NewX - 1, NewY, IgnoreCharacter) = 0 _
+            CollideCharacters(NewX - 1, NewY, IgnoreCharacter, False) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
     ElseIf NewSolidity = JUMP_RIGHT Then
         NewSolidity = MapSolidityAt(NewX + 1, NewY)
         If MoveDirection = FACING_RIGHT And _
             (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
-            CollideCharacters(NewX + 1, NewY, IgnoreCharacter) = 0 _
+            CollideCharacters(NewX + 1, NewY, IgnoreCharacter, False) = 0 _
                 Then CanMoveTo = 2 ' Can jump there
     End If
 End Function
@@ -1673,11 +1721,13 @@ Sub ResetCharacterScripts(I As Long)
     ' If we have at least one talk script, then the first time someone talks
     ' to us, use the first talk script.
     ' Otherwise (that is, if we have no talk scripts), don't use one!
-    If Characters(I).TalkScriptsLength > 0 Then
-        Characters(I).TalkScriptNumber = 1
-    Else
-        Characters(I).TalkScriptNumber = 0
-    End If
+    Characters(I).TalkScriptNumber = 0
+    Dim J As Long
+    For J = 1 To Characters(I).TalkScriptsLength
+        If Scripts(Characters(I).TalkScriptsStart + J - 1) _
+            .ScriptType = SCRIPT_TALK _
+        Then Characters(I).TalkScriptNumber = 1
+    Next
 
     If Characters(I).ScriptStateNumber Then
         ResetScriptState Characters(I).ScriptStateNumber
@@ -1749,6 +1799,18 @@ Sub HandleCharacterAnimation(I As Long)
             ' Done the walking/jumping animation
             ResetCharacterState I
             Characters(I).OtherFoot = (Characters(I).OtherFoot + 1) Mod 2
+
+            ' If we've touched another character with a "touch script", run
+            ' that script
+            Dim J As Long
+            J = CollideCharacters(Characters(I).X, Characters(I).Y, I, True)
+            If J > 0 Then
+                If Characters(J).TouchScriptNumber > 0 Then
+                    Talking = True
+                    SetScriptState TALKING_SCRIPT_STATE, _
+                        Characters(J).TouchScriptNumber
+                End If
+            End If
         Else
             Characters(I).Frame = Frame + 1
         End If
@@ -1854,7 +1916,7 @@ Function AddScriptCommand(CommandType As Integer)
     AddScriptCommand = UBound(ScriptCommands)
 End Function
 
-Sub ParseScript(File As Long, CharacterNumber As Long, ShouldLoop As Integer)
+Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
     Dim I As Long
     Dim Start As Long
     Dim Script As Script
@@ -1892,24 +1954,44 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ShouldLoop As Integer)
             I = AddScriptCommand(COMMAND_TALK)
             NextToken
             ScriptCommands(I).Num1 = Val(Token)
+        ElseIf Token = "map" Then
+            I = AddScriptCommand(COMMAND_MAP)
+            NextToken
+            ScriptCommands(I).Str1 = Token
+            NextToken
+            ScriptCommands(I).Str2 = Token
         ElseIf Token = "end" Then
             Exit Do
+        Else
+            ParseDie Text
         End If
     Loop
 
     ' Set script fields
+    Script.ScriptType = ScriptType
     Script.CharacterNumber = CharacterNumber
     Script.Start = Start
     Script.Length = UBound(ScriptCommands) - (Start - 1)
-    Script.ShouldLoop = ShouldLoop
 
     ' Append the new script to the end of the Scripts array
     ReDim _Preserve Scripts(UBound(Scripts) + 1) As Script
     Scripts(UBound(Scripts)) = Script
 End Sub
 
-Sub WriteScript(File As Long, Script As Script, ScriptType As String)
-    Print #File, "    "; ScriptType
+Function ScriptTypeStr$(ScriptType As Long)
+    If ScriptType = SCRIPT_LOOP Then
+        ScriptTypeStr$ = "script"
+    ElseIf ScriptType = SCRIPT_TALK Then
+        ScriptTypeStr$ = "talk"
+    ElseIf ScriptType = SCRIPT_TOUCH Then
+        ScriptTypeStr$ = "touch"
+    Else
+        Die "Unknown script type: " + Str$(ScriptType)
+    End If
+End Function
+
+Sub WriteScript(File As Long, Script As Script)
+    Print #File, "    "; ScriptTypeStr$(Script.ScriptType)
     Dim I As Long
     For I = Script.Start To Script.Start + Script.Length - 1
         Dim Command As ScriptCommand
@@ -1926,6 +2008,8 @@ Sub WriteScript(File As Long, Script As Script, ScriptType As String)
             Print #File, "        say "; Command.Str1
         ElseIf Command.CommandType = COMMAND_TALK Then
             Print #File, "        talk "; Command.Num1
+        ElseIf Command.CommandType = COMMAND_MAP Then
+            Print #File, "        map "; Command.Str1; " "; Command.Str2
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -1933,12 +2017,15 @@ Sub WriteScript(File As Long, Script As Script, ScriptType As String)
     Print #File, "    end"
 End Sub
 
-Function CollideCharacters(X As Long, Y As Long, IgnoreCharacter As Long)
+Function CollideCharacters(X As Long, Y As Long, IgnoreCharacter As Long, _
+    HiddenOk As Integer _
+)
     CollideCharacters = False
     Dim I As Long
     For I = 1 To UBound(Characters)
         If I = IgnoreCharacter Then _Continue
         If Characters(I).State = STATE_GONE Then _Continue
+        If Characters(I).IsHidden And Not HiddenOk Then _Continue
         If Characters(I).X = X And Characters(I).Y = Y Then
             CollideCharacters = I
             Exit Function
@@ -1972,7 +2059,7 @@ Sub UpdateScriptState(StateNumber As Long)
         TalkingText = ""
 
         If State.CommandNumber > Script.Length Then
-            If Script.ShouldLoop Then
+            If Script.ScriptType = SCRIPT_LOOP Then
                 State.CommandNumber = 0
             Else
                 Exit Do
@@ -2039,6 +2126,23 @@ Sub UpdateScriptState(StateNumber As Long)
         ElseIf Command.CommandType = COMMAND_TALK Then
             Characters(Script.CharacterNumber).TalkScriptNumber = Command.Num1
             State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_MAP Then
+            MapFilename = Command.Str1
+            FixMapFilename
+            LoadMap MapFilename
+
+            ' Locate the player at the (probably hidden) character indicated
+            ' by the script
+            I = FindCharacter(Command.Str2)
+            Characters(PLAYER).X = Characters(I).X
+            Characters(PLAYER).Y = Characters(I).Y
+            Characters(PLAYER).Facing = Characters(I).Facing
+            SetCharacterStartFields PLAYER
+
+            ' Okay, we loaded a different map.
+            ' Exit this subroutine/script, and restart the game's main loop!
+            RestartMainLoop = True
+            Exit Sub
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2047,6 +2151,17 @@ Sub UpdateScriptState(StateNumber As Long)
     ' Copy any state updates we've made back into the array of states
     ScriptStates(StateNumber) = State
 End Sub
+
+Function FindCharacter(FindName As String)
+    Dim I As Long
+    For I = 1 To UBound(Characters)
+        If Characters(I).Name = FindName Then
+            FindCharacter = I
+            Exit Function
+        End If
+    Next
+    Die "Couldn't find character named: " + FindName
+End Function
 
 Sub RenderTextBox(Text As String)
     _Dest ScreenImage ' Draw onto the game boy's screen
@@ -2098,4 +2213,11 @@ Sub RenderTextBox(Text As String)
 
     WriteAt TextBoxX + 1, TextBoxY + 1, TextBoxWidth
     WriteText Text
+End Sub
+
+Sub FixMapFilename
+    If Not Instr(MapFilename, "/") Then _
+        MapFilename = "maps/" + MapFilename
+    If Not Instr(MapFilename, ".") Then _
+        MapFilename = MapFilename + ".txt"
 End Sub

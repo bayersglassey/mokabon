@@ -10,7 +10,7 @@ B B B C C B B B 2C 0 2D 3 C B C 3 0 0 0 0 0 0
 2 2 1 5 7 0 1 6 0 0 0 4 2 2 2 4 0 0 0 2C 2D 0
 1 2 0 0 7 4 4 6 0 0 0 3 B B C 3 0 0 18 19 19 1A
 0 0 0 5 7 4 4 6 0 0 0 4 2 2 2 4 0 0 22 26 23 27
-0 0 0 0 7 4 4 0 0 0 0 3 B C B 3 0 5 28 21 1D 29
+0 0 0 0 7 4 4 31 0 0 0 3 B C B 3 0 5 28 21 1D 29
 0 0 0 0 7 7 7 7 7 7 7 7 7 7 7 7 7 7 0 0 0 0
 0 0 0 0 0 0 0 0 0 0 2 2 0 0 0 0 0 5 0 0 0 0
 0 0 0 0 0 0 1 E F F 10 2 0 0 0 0 0 0 0 0 0 0
@@ -20,13 +20,13 @@ B B B C C B B B 2C 0 2D 3 C B C 3 0 0 0 0 0 0
 0 0 8 7 8 2 12 13 13 13 13 14 0 0 0 0 0 0 0 0 0 0
 0 0 6 7 6 2 2 2 2 2 0 0 0 0 0 0 0 0 0 0 0 0
 0 0 0 7 1 2 2 1 0 0 0 0 E F F F 10 0 0 0 0 0
-0 0 0 0 0 2 2 0 0 0 E F F D D D F F 10 0 0 0
+0 0 0 31 0 2 2 0 0 0 E F F D D D F F 10 0 0 0
 0 0 0 0 0 0 0 0 0 0 11 D 16 13 13 13 17 D 15 0 0 0
 0 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 0
 0 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 0
 0 0 0 0 0 0 0 0 0 0 8 8 8 0 0 0 8 8 8 0 0 0
 
-facing u
+facing d
 position  5  7 
 
 character
@@ -98,10 +98,43 @@ character
     name TREE
     hidden
     start_y  0 
-    facing u
+    facing d
     position  4  3 
     talk
         say Shhhhh! I'm hiding`behind this tree!
+    end
+end
+
+character
+    name SIGN1
+    hidden
+    start_y  0 
+    facing d
+    position  7  9 
+    talk
+        say If you find the`criminal,`call the cops!
+    end
+end
+
+character
+    name SIGN2
+    hidden
+    start_y  0 
+    facing d
+    position  3  19 
+    talk
+        say Please be careful`climbing the`mountain.
+    end
+end
+
+character
+    name DOOR1
+    hidden
+    start_y  0 
+    facing d
+    position  19  9 
+    touch
+        map test1 DOOR1
     end
 end
 

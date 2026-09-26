@@ -244,3 +244,12 @@ solid
 solid
 2d 2e
 3d 3e
+
+# sign
+solid
+46 47
+56 57
+
+# cave entrance
+48 49
+58 59

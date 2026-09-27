@@ -464,7 +464,13 @@ Dim Shared SelectedCharacter As Long
 ' Index into Characters
 Const PLAYER = 1
 
-' TODO: items
+Type Item
+    Name As String
+    Count As Long
+    Hidden As Integer ' True or False
+End Type
+
+ReDim Shared Items(0) As Item
 
 
 ' ########################################################################
@@ -584,6 +590,18 @@ Do
                                     + Characters(I).TalkScriptNumber - 1
                         End If
                     End If
+                End If
+            End If
+
+            ' Handle gameboy's "Select" button
+            If _
+                KeyPressed(Asc("c")) And _
+                Characters(PLAYER).State = STATE_STANDING _
+            Then
+                If RidingBike Then
+                    Characters(PLAYER).TileStartY = 0
+                ElseIf Characters(PLAYER).TileStartY = 0 Then
+                    Characters(PLAYER).TileStartY = 1
                 End If
             End If
         End If
@@ -1928,7 +1946,11 @@ Sub HandleCharacterAnimation(I As Long)
                 End If
             End If
         Else
-            Characters(I).Frame = Frame + 1
+            If RidingBike Then
+                Characters(I).Frame = Frame + 2
+            Else
+                Characters(I).Frame = Frame + 1
+            End If
         End If
     End If
 End Sub
@@ -2474,3 +2496,7 @@ Sub SetCharacterTileStartNumber(I As Long, Number As Long)
     Characters(I).TileStartX = Number Mod 10
     Characters(I).TileStartY = Int(Number / 10)
 End Sub
+
+Function RidingBike
+    RidingBike = Characters(PLAYER).TileStartY = 1
+End Function

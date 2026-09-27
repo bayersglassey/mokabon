@@ -580,11 +580,13 @@ Do
                 GameMenuRoot = WrapOne(GameMenuRoot - 1, 7)
             If KeyPressed(DownCode) Then _
                 GameMenuRoot = WrapOne(GameMenuRoot + 1, 7)
-            If KeyPressed(ButtonACode) And GameMenuRoot = 3 Then
-                GameMenu = MENU_ITEMS
-                GameMenuItems = 1
-            ElseIf KeyPressed(ButtonACode) And GameMenuRoot = 7 Then
-                GameMenu = 0
+            If KeyPressed(ButtonACode) Then
+                If GameMenuRoot = 3 Then
+                    GameMenu = MENU_ITEMS
+                    GameMenuItems = 1
+                ElseIf GameMenuRoot = 7 Then
+                    GameMenu = 0
+                End If
             End If
             If KeyPressed(ButtonBCode) Then GameMenu = 0
         ElseIf GameMenu = MENU_ITEMS Then
@@ -2480,8 +2482,8 @@ Sub UpdateScriptState(StateNumber As Long)
                 Else
                     ' Player picked the second choice, so jump into the
                     ' else-branch of the if!
-                    State.CommandNumber = FindScriptStateCommandNumber( _
-                        State, COMMAND_ELSE) + 1
+                    State.CommandNumber = ScriptFindNextElseOrEnd(Script, _
+                        State.CommandNumber + 1) + 1
                 End If
                 State.Frame = 0
             Else
@@ -2498,14 +2500,14 @@ Sub UpdateScriptState(StateNumber As Long)
             If EvaluateOperator(I, Command.Num1, Command.Num2) Then
                 State.CommandNumber = State.CommandNumber + 1
             Else
-                State.CommandNumber = FindScriptStateCommandNumber( _
-                    State, COMMAND_ELSE) + 1
+                State.CommandNumber = ScriptFindNextElseOrEnd(Script, _
+                    State.CommandNumber + 1) + 1
             End If
         ElseIf Command.CommandType = COMMAND_ELSE Then
             ' We've reached the "else" if an "if" block, so let's jump to
             ' the "end"
-            State.CommandNumber = FindScriptStateCommandNumber( _
-                State, COMMAND_END) + 1
+            State.CommandNumber = ScriptFindNextElseOrEnd(Script, _
+                State.CommandNumber + 1) + 1
         ElseIf Command.CommandType = COMMAND_END Then
             ' We've reached the "end" if an "if" block... it has no effect,
             ' so just skip over it
@@ -2609,35 +2611,32 @@ Sub FixMapFilename
         MapFilename = MapFilename + ".txt"
 End Sub
 
-Function FindScriptStateCommandNumber(State As ScriptState, _
-    CommandType As Integer _
-)
-    ' Finds the next CommandNumber for the given ScriptState for which the
-    ' corresponding command has the given CommandType.
-    ' So for instance, in this script:
-    '
-    '   if choose yes no blabla
-    '     ...
-    '   else
-    '     ...
-    '   end
-    '
-    ' If the current CommandNumber is at the "if", and we're looking for
-    ' the "else", then this function would be used to find its CommandNumber
-    ' within that script.
-    Dim Script As Script
-    Script = Scripts(State.ScriptNumber)
-    Dim CommandNumber As Long
-    CommandNumber = State.CommandNumber
+Function ScriptFindNextElseOrEnd(Script As Script, CommandNumber As Long)
+    ' Finds the next "else" or "end" command within the given script
+    Dim Depth As Long
+    Dim CommandType As Long
     Do
         If CommandNumber > Script.Length Then Die _
-            "Couldn't find command of type " + Str$(CommandType) _
-            + " in script " + Str$(State.ScriptNumber)
-        If ScriptCommands(Script.Start + CommandNumber - 1).CommandType = _
-            CommandType Then Exit Do
+            "Couldn't find matching else/end for " + _
+            ScriptTypeStr$(Script.ScriptType) + " script for character " + _
+            Str$(Script.CharacterNumber) + ": " + _
+            Characters(Script.CharacterNumber).Name
+        CommandType = ScriptCommands( _
+            Script.Start + CommandNumber - 1).CommandType
+        If CommandType = COMMAND_IF_CHOOSE _
+            Or CommandType = COMMAND_IF_ITEM _
+        Then
+            Depth = Depth + 1
+        ElseIf CommandType = COMMAND_ELSE Or CommandType = COMMAND_END Then
+            If Depth > 0 Then
+                Depth = Depth - 1
+            Else
+                Exit Do
+            End If
+        End If
         CommandNumber = CommandNumber + 1
     Loop
-    FindScriptStateCommandNumber = CommandNumber
+    ScriptFindNextElseOrEnd = CommandNumber
 End Function
 
 Function GetCharacterTileStartNumber(I As Long)

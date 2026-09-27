@@ -180,6 +180,7 @@
 [X] If you talk to pidgey just before he jumps, the game freezes!..
     Because then his state isn't STANDING.
     ...ok, I *believe* this is now fixed.
+[X] Support nested if/else/end commands in scripts
 [ ] Replace Character's TalkScriptsStart, TalkScriptsLength with just
     ScriptsStart, ScriptsLength.
     And then we can e.g. remove the check when parsing "script" which

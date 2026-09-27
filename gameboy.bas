@@ -32,6 +32,16 @@ Const F7Code = 16640
 Const PageUpCode = 18688
 Const PageDownCode = 20736
 
+' Keyboard key codes for gameboy buttons
+Dim Shared ButtonACode As Long
+Dim Shared ButtonBCode As Long
+Dim Shared ButtonSelectCode As Long
+Dim Shared ButtonStartCode As Long
+ButtonACode = Asc("z")
+ButtonBCode = Asc("x")
+ButtonSelectCode = Asc("c")
+ButtonStartCode = EnterCode
+
 ' Size of the gameboy's screen in pixels
 Const TrueScreenWidth = 160
 Const TrueScreenHeight = 144
@@ -53,6 +63,15 @@ Const MAP_RESIZE_MODE = "Map Resizing Tool"
 Const TILE_SELECTOR_MODE = "Tile Selector"
 Const CHARACTER_EDITOR_MODE = "Character Editor"
 Mode = GAME_MODE
+
+' When the menu is open (after pressing gameboy's Start button), GameMenu
+' will be > 0, and specifically one of these values:
+Dim Shared GameMenu As Long
+Const MENU_ROOT = 1
+Const MENU_ITEMS = 2
+
+Dim Shared GameMenuRoot As Long
+Dim Shared GameMenuItems As Long
 
 ' When Mode = TILE_SELECTOR_MODE, we render MapTiles as a grid, and this
 ' is the width of that grid (in map tiles).
@@ -522,7 +541,7 @@ Do
         If TalkingText <> "" Then
             If KeyPressed(LeftCode) Then TalkingChoice = False
             If KeyPressed(RightCode) Then TalkingChoice = True
-            If KeyPressed(Asc("z")) Then TalkingText = ""
+            If KeyPressed(ButtonACode) Then TalkingText = ""
         End If
 
         If TalkingText = "" Then
@@ -541,6 +560,49 @@ Do
             RenderCharacter I
         Next
         If TalkingText <> "" Then RenderTalkingText
+    ElseIf Mode = GAME_MODE And GameMenu > 0 Then
+        RenderMap
+        For I = 1 To UBound(Characters)
+            RenderCharacter I
+        Next
+
+        RenderTextBox 10, 0, 9, 14
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 1) + "POKEDEX"
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 2) + "POKEMON"
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 3) + "ITEM"
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 4) + Characters(PLAYER).Name
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 5) + "SAVE"
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 6) + "OPTION"
+        WriteText "`" + MaybeArrow$(GameMenuRoot = 7) + "EXIT"
+
+        If GameMenu = MENU_ROOT Then
+            If KeyPressed(UpCode) Then _
+                GameMenuRoot = WrapOne(GameMenuRoot - 1, 7)
+            If KeyPressed(DownCode) Then _
+                GameMenuRoot = WrapOne(GameMenuRoot + 1, 7)
+            If KeyPressed(ButtonACode) And GameMenuRoot = 3 Then
+                GameMenu = MENU_ITEMS
+                GameMenuItems = 1
+            ElseIf KeyPressed(ButtonACode) And GameMenuRoot = 7 Then
+                GameMenu = 0
+            End If
+            If KeyPressed(ButtonBCode) Then GameMenu = 0
+        ElseIf GameMenu = MENU_ITEMS Then
+            If UBound(Items) > 0 Then
+                If KeyPressed(UpCode) Then _
+                    GameMenuItems = WrapOne(GameMenuItems - 1, UBound(Items))
+                If KeyPressed(DownCode) Then _
+                    GameMenuItems = WrapOne(GameMenuItems + 1, UBound(Items))
+            End If
+            RenderTextBox 4, 2, 13, 9
+            For I = 1 To UBound(Items)
+                WriteText MaybeArrow$(GameMenuItems = I) + Items(I).Name
+                WriteText "        *" + Str$(Items(I).Count)
+            Next
+            If KeyPressed(ButtonBCode) Then GameMenu = MENU_ROOT
+        End If
+
+        If KeyPressed(ButtonStartCode) Then GameMenu = 0
     ElseIf Mode = GAME_MODE Then
         If KeyPressed(Asc("m")) Then
             Mode = MAP_EDITOR_MODE
@@ -582,7 +644,7 @@ Do
 
             ' Handle gameboy's "A" button
             If _
-                KeyPressed(Asc("z")) And _
+                KeyPressed(ButtonACode) And _
                 Characters(PLAYER).State = STATE_STANDING _
             Then
                 NewX = PlayerX + FacingAddX(Characters(Player).Facing)
@@ -616,7 +678,7 @@ Do
 
             ' Handle gameboy's "Select" button
             If _
-                KeyPressed(Asc("c")) And _
+                KeyPressed(ButtonSelectCode) And _
                 Characters(PLAYER).State = STATE_STANDING _
             Then
                 If RidingBike(PLAYER) Then
@@ -625,6 +687,12 @@ Do
                     If CAN_ALWAYS_BIKE Or GetItemCount("BIKE") > 0 Then _
                         Characters(PLAYER).TileStartY = 1
                 End If
+            End If
+
+            ' Handle gameboy's "Start" button
+            If KeyPressed(ButtonStartCode) Then
+                GameMenu = MENU_ROOT
+                GameMenuRoot = 1
             End If
         End If
 
@@ -785,6 +853,10 @@ System ' Close the program without saying "Press any key..."
 Function Wrap(Value As Long, MaxValue As Long)
     ' This works so long as Value > -MaxValue
     Wrap = (Value + MaxValue) Mod MaxValue
+End Function
+
+Function WrapOne(Value As Long, MaxValue As Long)
+    WrapOne = Wrap(Value - 1, MaxValue) + 1
 End Function
 
 Function KeyPressed(KeyCode AS Long)
@@ -1037,6 +1109,9 @@ Sub WriteText(Text As String)
         RenderTile FontTileset, Entry.X, Entry.Y, WriteX, WriteY, 0, 0
         WriteX = WriteX + 1
     Next
+    LineWidth = 0
+    WriteX = WriteStartX
+    WriteY = WriteY + 1
 End Sub
 
 Sub RenderSelectionBox(X As Long, Y As Long, Width As Long, Height As Long)
@@ -2455,13 +2530,11 @@ Function FindCharacter(FindName As String)
     Die "Couldn't find character named: " + FindName
 End Function
 
-Sub RenderTextBox(Text As String)
+Sub RenderTextBox(TextBoxX As Long, TextBoxY As Long, _
+    TextBoxWidth As Long, TextBoxHeight As Long _
+)
     _Dest ScreenImage ' Draw onto the game boy's screen
 
-    Const TextBoxX = 0
-    Const TextBoxY = 13
-    Const TextBoxWidth = 18
-    Const TextBoxHeight = 3
     Dim X As Long, Y As Long
 
     ' Top-left corner
@@ -2504,28 +2577,29 @@ Sub RenderTextBox(Text As String)
     Next
 
     WriteAt TextBoxX + 1, TextBoxY + 1, TextBoxWidth
+End Sub
+
+Sub RenderTalkBox(Text As String)
+    ' Renders a text box at the bottom of the screen where the current "talk"
+    ' is displayed (that is, the current "say" script command's output)
+    RenderTextBox 0, 13, 18, 3
     WriteText Text
 End Sub
+
+Function MaybeArrow$(Condition As Integer)
+    MaybeArrow$ = " "
+    If Condition Then MaybeArrow$ = ">"
+End Function
 
 Sub RenderTalkingText
     Dim Text As String
     Text = TalkingText
     If TalkingChoiceStr1 <> "" Then
-        Text = Text + NEWLINE
-        If TalkingChoice Then
-            Text = Text + " "
-        Else
-            Text = Text + ">"
-        EndIf
-        Text = Text + TalkingChoiceStr1 + " "
-        If TalkingChoice Then
-            Text = Text + ">"
-        Else
-            Text = Text + " "
-        EndIf
-        Text = Text + TalkingChoiceStr2
+        Text = Text + NEWLINE + _
+            MaybeArrow$(Not TalkingChoice) + TalkingChoiceStr1 + " " + _
+            MaybeArrow$(TalkingChoice) + TalkingChoiceStr2
     End If
-    RenderTextBox Text
+    RenderTalkBox Text
 End Sub
 
 Sub FixMapFilename

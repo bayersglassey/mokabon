@@ -151,7 +151,7 @@
             end
     [X] Add a bike item, when you have it, gb's Select button puts you
         on/off it.
-    [ ] Add Start button menu, with an ITEMS option
+    [X] Add Start button menu, with an ITEMS option
     [ ] Need a way to save/load the game, including player's position and
         items, etc.
 [ ] Add money

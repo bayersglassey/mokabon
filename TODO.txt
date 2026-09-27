@@ -128,14 +128,14 @@
         images, and then a way to render the battle screen.
         To begin with, can just be a simple text-based menu.
 
-[ ] Add items... just characters with IsItem = True?..
+[X] Add items... just characters with IsItem = True?..
     We probably want a STATE_ITEM, so we don't have to add a bunch of
     IsItem checks everywhere.
     For items, TileStartX is *not* controlled by animation, and Facing
     is unused.
     When saving/loading, items show up as "item" instead of "character",
     and "start_x" only appears under items, not characters.
-    [ ] In CHARACTER_EDITOR_MODE, have buttons for toggling IsHidden, IsItem,
+    [X] In CHARACTER_EDITOR_MODE, have buttons for toggling IsHidden, IsItem,
         IsPokemon.
         Have buttons for incrementing/decrementing TileStartX and TileStartY.
 [ ] Add player's inventory
@@ -176,6 +176,7 @@
 [X] Add a button to refresh maptiles.
 [X] Add map tiles for houses etc.
 [X] Tile selection mode: need to scroll if there are lots of map tiles...
+[X] Replace "start_y" in the map format with something else... "images"?
 [ ] Replace Character's TalkScriptsStart, TalkScriptsLength with just
     ScriptsStart, ScriptsLength.
     And then we can e.g. remove the check when parsing "script" which
@@ -188,3 +189,5 @@
     back of the house.
 [ ] If you talk to pidgey just before he jumps, the game freezes!..
     Because then his state isn't STANDING.
+[ ] If you move JIMBERT in the editor, then talk to them, you see the
+    "SQUAWK!" message, followed by the usual JIMBERT script.

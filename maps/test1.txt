@@ -19,7 +19,7 @@ position  3  0
 character
     name DOOR1
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  3  0 
     touch
@@ -30,7 +30,7 @@ end
 character
     name DOOR2
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  0  8 
     touch

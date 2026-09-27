@@ -28,6 +28,8 @@ Const EnterCode = 13
 Const EscapeCode = 27
 Const F5Code = 16128
 Const F7Code = 16640
+Const PageUpCode = 18688
+Const PageDownCode = 20736
 
 ' Size of the gameboy's screen in pixels
 Const TrueScreenWidth = 160
@@ -346,6 +348,7 @@ Const STATE_WALKING = 1
 Const STATE_JUMPING = 2
 Const STATE_SHORT_JUMPING = 3
 Const STATE_GONE = 4 ' Don't render, collide with, etc this character
+Const STATE_ITEM = 5 ' When character is an item, their State is always this
 
 Type Character
     ' Character's name; should be unique within a given map
@@ -359,6 +362,10 @@ Type Character
     ' Whether we should use PokemonCharacterTileset instead of
     ' CharacterTileset
     IsPokemon As Integer
+
+    ' Items use MiscCharacterTileset instead of CharacterTileset, and are
+    ' always in STATE_ITEM, so they don't walk around etc!
+    IsItem As Integer
 
     ' Character's position on the map, in map tiles
     X As Long
@@ -692,36 +699,7 @@ Do
                     PLAYER, True)
             End If
         End If
-        If SelectedCharacter Then
-            ' Move the selected character around with us, and make them face
-            ' the direction of the arrow key we're pressing (if any)
-            MoveDirection = GetPlayerMoveDirection(False)
-            If MoveDirection >=0 _
-                And Not Characters(SelectedCharacter).IsHidden _
-                And Characters(SelectedCharacter).Facing <> MoveDirection _
-            Then
-                ' Just rotate the character
-                Characters(SelectedCharacter).StartFacing = MoveDirection
-                Characters(SelectedCharacter).Facing = MoveDirection
-            Else
-                ' Move the character
-                If MoveDirection >= 0 Then PrevKeyCode = 0
-                HandleEditorArrowKeys
-                Characters(SelectedCharacter).StartX = PlayerX
-                Characters(SelectedCharacter).StartY = PlayerY
-                Characters(SelectedCharacter).X = PlayerX
-                Characters(SelectedCharacter).Y = PlayerY
-            End If
-            ResetCharacterState SelectedCharacter
-            ResetCharacterScripts SelectedCharacter
-            HandleCharacterAnimation SelectedCharacter
-        Else
-            HandleEditorArrowKeys
-            If KeyPressed(Asc("i")) Then
-                AddHiddenCharacter
-                SelectedCharacter = UBound(Characters)
-            End If
-        End If
+        HandleCharacterEditorKeys
 
         RenderMap
         For I = PLAYER + 1 To UBound(Characters)
@@ -831,7 +809,12 @@ Sub PrintHelp
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         Print " Arrow keys: move"
         Print " Space: select/unselect character"
-        Print " I: add a hidden character (for signs, doors, etc)"
+        Print " A: add a character"
+        Print " WHILE A CHARACTER IS SELECTED:"
+        Print "   D: toggle whether character is hidden"
+        Print "   I: toggle whether character is an item"
+        Print "   P: toggle whether character is a Pokemon"
+        Print "   Page Up/Down: change character's image"
         PrintEditorHelp
     Else
         Die "Unknown mode: " + Mode
@@ -1173,13 +1156,21 @@ End Sub
 
 Sub WriteCharacter(I As Long, File As Long)
     Dim J As Long
-    Print #File, "character"
+    Dim Images As Long
+    If Characters(I).IsItem Then
+        Print #File, "item"
+        Images = GetCharacterTileStartNumber(I)
+    Else
+        Print #File, "character"
+        Images = Characters(I).TileStartY
+    End If
     If Len(Characters(I).Name) Then Print #File, "    name "; _
         Characters(I).Name
     If Characters(I).IsHidden Then Print #File, "    hidden"
     If Characters(I).IsPokemon Then Print #File, "    pokemon"
-    Print #File, "    start_y "; Characters(I).TileStartY
-    Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
+    Print #File, "    images "; Images
+    If Not Characters(I).IsItem Then _
+        Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
     Print #File, "    position "; Characters(I).StartX; Characters(I).StartY
     If Characters(I).ScriptStateNumber > 0 Then _
         WriteScript File, _
@@ -1274,7 +1265,9 @@ Sub LoadMap(Filename As String)
             NextToken
             Characters(PLAYER).Facing = ParseFacing(Token)
         ElseIf Token = "character" Then
-            ParseCharacter File
+            ParseCharacter File, False
+        ElseIf Token = "item" Then
+            ParseCharacter File, True
         Else
             ParseDie Text
         End If
@@ -1299,6 +1292,7 @@ Sub InitializeCharacter(I As Long)
     Characters(I).Name = "NONAME"
     Characters(I).IsHidden = False
     Characters(I).IsPokemon = False
+    Characters(I).IsItem = False
     Characters(I).X = 0
     Characters(I).Y = 0
     Characters(I).ExtraX = 0
@@ -1319,24 +1313,24 @@ Sub InitializeCharacter(I As Long)
     SetCharacterStartFields I
 End Sub
 
-Sub AddHiddenCharacter
+Sub AddCharacter
     Dim I As Long
     I = UBound(Characters) + 1
     ReDim _Preserve Characters(I) As Character
     InitializeCharacter I
-    Characters(I).IsHidden = True
     Characters(I).X = PlayerX
     Characters(I).Y = PlayerY
-    Characters(I).Facing = FACING_DOWN
     SetCharacterStartFields I
 End Sub
 
-Sub ParseCharacter(File As Long)
+Sub ParseCharacter(File As Long, IsItem As Integer)
     Dim I As Long
     Dim Text As String
     I = UBound(Characters) + 1
     ReDim _Preserve Characters(I) As Character
     InitializeCharacter I
+    Characters(I).IsItem = IsItem
+    ResetCharacterState I ' Affected by character's IsItem
     Characters(I).TalkScriptsStart = UBound(Scripts) + 1
     Do
         Line Input #File, Text
@@ -1351,9 +1345,15 @@ Sub ParseCharacter(File As Long)
             Characters(I).IsHidden = True
         ElseIf Token = "pokemon" Then
             Characters(I).IsPokemon = True
-        ElseIf Token = "start_y" Then
+        ElseIf Token = "images" Then
             NextToken
-            Characters(I).TileStartY = Val(Token)
+            Dim Images As Long
+            Images = Val(Token)
+            If IsItem Then
+                SetCharacterTileStartNumber I, Images
+            Else
+                Characters(I).TileStartY = Images
+            End If
         ElseIf Token = "facing" Then
             NextToken
             Characters(I).Facing = ParseFacing(Token)
@@ -1405,6 +1405,12 @@ Sub SetCharacterStartFields(I As Long)
     Characters(I).StartX = Characters(I).X
     Characters(I).StartY = Characters(I).Y
     Characters(I).StartFacing = Characters(I).Facing
+End Sub
+
+Sub ResetCharacterStartFields(I As Long)
+    Characters(I).X = Characters(I).StartX
+    Characters(I).Y = Characters(I).StartY
+    Characters(I).Facing = Characters(I).StartFacing
 End Sub
 
 Function WithinMap(X As Long, Y As Long)
@@ -1703,6 +1709,81 @@ Sub HandleEditorArrowKeys
         Characters(PLAYER).X = PlayerX + 1
 End Sub
 
+Sub HandleCharacterEditorKeys
+    Dim MoveDirection As Long
+    Dim TileStartNumber As Long
+    If SelectedCharacter Then
+        ' Move the selected character around with us, and make them face
+        ' the direction of the arrow key we're pressing (if any)
+        MoveDirection = GetPlayerMoveDirection(False)
+        If MoveDirection >=0 _
+            And Not Characters(SelectedCharacter).IsHidden _
+            And Characters(SelectedCharacter).Facing <> MoveDirection _
+            And Not Characters(SelectedCharacter).IsItem _
+        Then
+            ' Just rotate the character
+            Characters(SelectedCharacter).StartFacing = MoveDirection
+            Characters(SelectedCharacter).Facing = MoveDirection
+        Else
+            ' Move the character
+            If MoveDirection >= 0 Then PrevKeyCode = 0
+            HandleEditorArrowKeys
+            Characters(SelectedCharacter).StartX = PlayerX
+            Characters(SelectedCharacter).StartY = PlayerY
+            Characters(SelectedCharacter).X = PlayerX
+            Characters(SelectedCharacter).Y = PlayerY
+        End If
+        If KeyPressed(Asc("d")) Then
+            Characters(SelectedCharacter).IsHidden = _
+                Not Characters(SelectedCharacter).IsHidden
+        ElseIf KeyPressed(Asc("i")) Then
+            Characters(SelectedCharacter).TileStartX = 0
+            Characters(SelectedCharacter).TileStartY = 0
+            Characters(SelectedCharacter).IsItem = _
+                Not Characters(SelectedCharacter).IsItem
+            Characters(SelectedCharacter).IsPokemon = False
+        ElseIf KeyPressed(Asc("p")) Then
+            Characters(SelectedCharacter).TileStartX = 0
+            Characters(SelectedCharacter).TileStartY = 0
+            Characters(SelectedCharacter).IsPokemon = _
+                Not Characters(SelectedCharacter).IsPokemon
+            Characters(SelectedCharacter).IsItem = False
+        End If
+        If KeyPressed(PageUpCode) Then
+            If Characters(SelectedCharacter).IsItem Then
+                TileStartNumber = GetCharacterTileStartNumber( _
+                    SelectedCharacter)
+                SetCharacterTileStartNumber SelectedCharacter, _
+                    TileStartNumber + 1
+            Else
+                Characters(SelectedCharacter).TileStartY = _
+                    Characters(SelectedCharacter).TileStartY + 1
+            End If
+        End If
+        If KeyPressed(PageDownCode) Then
+            If Characters(SelectedCharacter).IsItem Then
+                TileStartNumber = GetCharacterTileStartNumber( _
+                    SelectedCharacter)
+                If TileStartNumber > 0 Then _
+                    SetCharacterTileStartNumber SelectedCharacter, _
+                        TileStartNumber - 1
+            ElseIf Characters(SelectedCharacter).TileStartY > 0 Then
+                Characters(SelectedCharacter).TileStartY = _
+                    Characters(SelectedCharacter).TileStartY - 1
+            End If
+        End If
+        ResetCharacterState SelectedCharacter
+        ResetCharacterScripts SelectedCharacter
+        HandleCharacterAnimation SelectedCharacter
+    Else
+        HandleEditorArrowKeys
+        If KeyPressed(Asc("a")) Then
+            AddCharacter
+            SelectedCharacter = UBound(Characters)
+        End If
+    End If
+End Sub
+
 Function GetPlayerMoveDirection(Smooth As Integer)
     Dim Up As Long, Down As Long, Left As Long, Right As Long
     If Smooth Then
@@ -1741,7 +1822,11 @@ Function FacingAddY(Facing As Long)
 End Function
 
 Sub ResetCharacterState(I As Long)
-    Characters(I).State = STATE_STANDING
+    If Characters(I).IsItem Then
+        Characters(I).State = STATE_ITEM
+    Else
+        Characters(I).State = STATE_STANDING
+    End If
     Characters(I).Frame = 0
     Characters(I).ExtraX = 0
     Characters(I).ExtraY = 0
@@ -1771,6 +1856,7 @@ End Sub
 
 Sub HandleCharacterAnimation(I As Long)
     If Characters(I).State = STATE_GONE Then Exit Sub
+    If Characters(I).State = STATE_ITEM Then Exit Sub
 
     Dim State As Long, Facing As Long
     State = Characters(I).State
@@ -1905,10 +1991,12 @@ Sub RenderCharacter(I As Long)
         Y = Y - (5 * Multiplier - Abs(Frame - 4 * Multiplier))
     End If
 
-    ' Pokemon use a different character tileset
+    ' Pokemon and items use different character tilesets
     Dim Tileset As Tileset
     If Character.IsPokemon Then
         Tileset = PokemonCharacterTileset
+    ElseIf Character.IsItem Then
+        Tileset = MiscCharacterTileset
     Else
         Tileset = CharacterTileset
     End If
@@ -2136,8 +2224,10 @@ Sub UpdateScriptState(StateNumber As Long)
 
         ' Wait for character's current animation to complete, before doing
         ' any script actions
-        If Characters(Script.CharacterNumber).State <> STATE_STANDING _
-            Then Exit Do
+        If _
+            Characters(Script.CharacterNumber).State <> STATE_STANDING _
+            And Characters(Script.CharacterNumber).State <> STATE_ITEM _
+        Then Exit Do
 
         Command = ScriptCommands(Script.Start + State.CommandNumber - 1)
         If Command.CommandType = COMMAND_WAIT Then
@@ -2374,3 +2464,13 @@ Function FindScriptStateCommandNumber(State As ScriptState, _
     Loop
     FindScriptStateCommandNumber = CommandNumber
 End Function
+
+Function GetCharacterTileStartNumber(I As Long)
+    GetCharacterTileStartNumber = _
+        Characters(I).TileStartY * 10 + Characters(I).TileStartX
+End Function
+
+Sub SetCharacterTileStartNumber(I As Long, Number As Long)
+    Characters(I).TileStartX = Number Mod 10
+    Characters(I).TileStartY = Int(Number / 10)
+End Sub

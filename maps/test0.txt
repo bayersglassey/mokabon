@@ -31,7 +31,7 @@ position  5  7
 
 character
     name JIMBERT
-    start_y  7 
+    images  7 
     facing d
     position  4  6 
     talk
@@ -55,7 +55,7 @@ end
 character
     name PIDGEY
     pokemon
-    start_y  0 
+    images  0 
     facing r
     position  5  10 
     script
@@ -76,7 +76,7 @@ end
 character
     name PIKACHU
     pokemon
-    start_y  1 
+    images  1 
     facing l
     position  12  10 
     script
@@ -97,7 +97,7 @@ end
 character
     name TREE
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  4  3 
     talk
@@ -113,7 +113,7 @@ end
 character
     name SIGN1
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  7  9 
     talk
@@ -124,7 +124,7 @@ end
 character
     name SIGN2
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  3  19 
     talk
@@ -135,7 +135,7 @@ end
 character
     name DOOR1
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  19  9 
     touch
@@ -146,7 +146,7 @@ end
 character
     name DOOR2
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  18  14 
     touch
@@ -157,11 +157,17 @@ end
 character
     name COP
     hidden
-    start_y  0 
+    images  0 
     facing d
     position  15  1 
     talk
         say Shhh! I'm waiting for the criminal!
     end
+end
+
+item
+    name MOUNTAIN_BALL
+    images  1 
+    position  9  13 
 end
 

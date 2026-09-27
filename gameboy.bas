@@ -196,14 +196,15 @@ Const COMMAND_WALK = 1
 Const COMMAND_JUMP = 2
 Const COMMAND_FACE = 3
 Const COMMAND_SAY = 4
-Const COMMAND_TALK = 5
-Const COMMAND_MAP = 6
-Const COMMAND_ADD_ITEM = 7
-Const COMMAND_REMOVE = 8
-Const COMMAND_IF_CHOOSE = 9
-Const COMMAND_IF_ITEM = 10
-Const COMMAND_ELSE = 11
-Const COMMAND_END = 12
+Const COMMAND_ON_TALK = 5
+Const COMMAND_ON_TOUCH = 6
+Const COMMAND_MAP = 7
+Const COMMAND_ADD_ITEM = 8
+Const COMMAND_REMOVE = 9
+Const COMMAND_IF_CHOOSE = 10
+Const COMMAND_IF_ITEM = 12
+Const COMMAND_ELSE = 13
+Const COMMAND_END = 14
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -220,6 +221,7 @@ Const SCRIPT_TOUCH = 2
 
 Type Script
     ScriptType As Integer ' SCRIPT_LOOP, etc
+    Name As String
     CharacterNumber As Long ' Index into Characters
     Start As Long ' Index into ScriptCommands
     Length As Long ' Number of commands in this script
@@ -442,20 +444,13 @@ Type Character
     ' Index into ScriptStates, or 0
     ScriptStateNumber As Long
 
-    ' Index into Scripts, or 0
+    ' The range of members of Scripts which belong to this character
+    ScriptsStart As Long
+    ScriptsLength As Long
+
+    ' Indexes into the Scripts array
+    TalkScriptNumber As Long
     TouchScriptNumber As Long
-
-    ' Index into Scripts
-    TalkScriptsStart As Long
-
-    ' Number of entries in Scripts
-    TalkScriptsLength As Long
-
-    ' Combined with TalkScriptsStart to indicate the talk script to be
-    ' used.
-    ' If 0, no talk script is used; otherwise, the script to be used
-    ' is Scripts(TalkScriptsStart + TalkScriptNumber - 1)
-    TalkScriptNumber As Integer
 
     ' Starting values for other character fields, set when the map is loaded,
     ' and used when the map is saved.
@@ -663,10 +658,10 @@ Do
                         Characters(I).Facing = _
                             (Characters(PLAYER).Facing + 2) Mod 4
                         If Characters(I).TalkScriptNumber > 0 Then
+                            HandleCharacterAnimation I
                             Talking = True
                             SetScriptState TALKING_SCRIPT_STATE, _
-                                Characters(I).TalkScriptsStart _
-                                    + Characters(I).TalkScriptNumber - 1
+                                Characters(I).TalkScriptNumber
                             ' Restart the main loop, to make sure we don't
                             ' do stuff like execute non-player characters
                             ' normally, which can result in bugs, like if
@@ -1289,14 +1284,9 @@ Sub WriteCharacter(I As Long, File As Long)
     If Not Characters(I).IsItem Then _
         Print #File, "    facing "; FacingStr$(Characters(I).StartFacing)
     Print #File, "    position "; Characters(I).StartX; Characters(I).StartY
-    If Characters(I).ScriptStateNumber > 0 Then _
+    For J = 1 To Characters(I).ScriptsLength
         WriteScript File, _
-            Scripts( _
-                ScriptStates(Characters(I).ScriptStateNumber).ScriptNumber _
-            )
-    For J = 1 To Characters(I).TalkScriptsLength
-        WriteScript File, _
-            Scripts(Characters(I).TalkScriptsStart + J - 1)
+            Scripts(Characters(I).ScriptsStart + J - 1)
     Next
     Print #File, "end"
 End Sub
@@ -1422,11 +1412,11 @@ Sub InitializeCharacter(I As Long)
     Characters(I).State = STATE_STANDING
     Characters(I).Frame = 0
     Characters(I).OtherFoot = 0
-    Characters(I).ScriptStateNumber = 0
-    Characters(I).TouchScriptNumber = 0
-    Characters(I).TalkScriptsStart = 0
-    Characters(I).TalkScriptsLength = 0
+    Characters(I).ScriptsStart = 0
+    Characters(I).ScriptsLength = 0
     Characters(I).TalkScriptNumber = 0
+    Characters(I).TouchScriptNumber = 0
+    Characters(I).ScriptStateNumber = 0
     SetCharacterStartFields I
 End Sub
 
@@ -1443,12 +1433,13 @@ End Sub
 Sub ParseCharacter(File As Long, IsItem As Integer)
     Dim I As Long
     Dim Text As String
+    Dim ScriptName As String
     I = UBound(Characters) + 1
     ReDim _Preserve Characters(I) As Character
     InitializeCharacter I
     Characters(I).IsItem = IsItem
     ResetCharacterState I ' Affected by character's IsItem
-    Characters(I).TalkScriptsStart = UBound(Scripts) + 1
+    Characters(I).ScriptsStart = UBound(Scripts) + 1
     Do
         Line Input #File, Text
         Parse Text
@@ -1479,37 +1470,25 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
             Characters(I).X = Val(Token)
             NextToken
             Characters(I).Y = Val(Token)
-        ElseIf Token = "script" Then
-            If Characters(I).ScriptStateNumber > 0 Then
-                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
-                    "script" + QUOTE + " multiple times"
-            End If
-            If Characters(I).TalkScriptsStart < UBound(Scripts) + 1 Then
-                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
-                    "talk" + QUOTE + " before " + QUOTE + "script" + QUOTE
-            End If
-            ParseScript File, I, SCRIPT_LOOP
-            Characters(I).TalkScriptsStart = UBound(Scripts) + 1
-            ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
-                As ScriptState
-            SetScriptState UBound(ScriptStates), UBound(Scripts)
-            Characters(I).ScriptStateNumber = UBound(ScriptStates)
+        ElseIf Token = "loop" Then
+            NextToken
+            ScriptName = Token
+            ParseScript File, I, SCRIPT_LOOP, ScriptName
         ElseIf Token = "talk" Then
-            ParseScript File, I, SCRIPT_TALK
+            NextToken
+            ScriptName = Token
+            ParseScript File, I, SCRIPT_TALK, ScriptName
         ElseIf Token = "touch" Then
-            If Characters(I).TouchScriptNumber > 0 Then
-                Die "Line " + Str$(LineNumber) + ": Can't have " + QUOTE + _
-                    "touch" + QUOTE + " multiple times"
-            End If
-            ParseScript File, I, SCRIPT_TOUCH
-            Characters(I).TouchScriptNumber = UBound(Scripts)
+            NextToken
+            ScriptName = Token
+            ParseScript File, I, SCRIPT_TOUCH, ScriptName
         ElseIf Token = "end" Then
             Exit Do
         End If
     Loop
 
-    Characters(I).TalkScriptsLength = _
-        UBound(Scripts) + 1 - Characters(I).TalkScriptsStart
+    Characters(I).ScriptsLength = _
+        UBound(Scripts) + 1 - Characters(I).ScriptsStart
 
     ResetCharacterScripts I
 
@@ -1953,16 +1932,34 @@ Sub ResetCharacterScripts(I As Long)
     ' If we have at least one talk script, then the first time someone talks
     ' to us, use the first talk script.
     ' Otherwise (that is, if we have no talk scripts), don't use one!
+    Dim Script As Script, ScriptType As Long
+    Dim J As Long, ScriptsStart As Long, LoopScriptNumber As Long
+    ScriptsStart = Characters(I).ScriptsStart
+    LoopScriptNumber = 0
     Characters(I).TalkScriptNumber = 0
-    Dim J As Long
-    For J = 1 To Characters(I).TalkScriptsLength
-        If Scripts(Characters(I).TalkScriptsStart + J - 1) _
-            .ScriptType = SCRIPT_TALK _
-        Then Characters(I).TalkScriptNumber = 1
+    Characters(I).TouchScriptNumber = 0
+    For J = ScriptsStart To ScriptsStart + Characters(I).ScriptsLength - 1
+        Script = Scripts(J)
+        ScriptType = Script.ScriptType
+        If ScriptType = SCRIPT_LOOP And LoopScriptNumber = 0 _
+            Then LoopScriptNumber = J
+        If ScriptType = SCRIPT_TALK And Characters(I).TalkScriptNumber = 0 _
+            Then Characters(I).TalkScriptNumber = J
+        If ScriptType = SCRIPT_TOUCH And Characters(I).TouchScriptNumber = 0 _
+            Then Characters(I).TouchScriptNumber = J
     Next
 
-    If Characters(I).ScriptStateNumber Then
-        ResetScriptState Characters(I).ScriptStateNumber
+    If LoopScriptNumber Then
+        If Characters(I).ScriptStateNumber = 0 Then
+            ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
+                As ScriptState
+            Characters(I).ScriptStateNumber = UBound(ScriptStates)
+        End If
+        SetScriptState Characters(I).ScriptStateNumber, LoopScriptNumber
+    ElseIf Characters(I).ScriptStateNumber Then
+        ' This should never happen!
+        Die "Character " + Str$(I) + "(" + Characters(I).Name + "): " + _
+            "have a script state, but no loop scripts!"
     End If
 End Sub
 
@@ -2159,7 +2156,9 @@ Function AddScriptCommand(CommandType As Integer)
     AddScriptCommand = UBound(ScriptCommands)
 End Function
 
-Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
+Sub ParseScript(File As Long, CharacterNumber As Long, _
+    ScriptType As Integer, ScriptName As String _
+)
     Dim I As Long
     Dim Start As Long
     Dim Script As Script
@@ -2194,10 +2193,19 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
         ElseIf Token = "say" Then
             I = AddScriptCommand(COMMAND_SAY)
             ScriptCommands(I).Str1 = ParseText
-        ElseIf Token = "talk" Then
-            I = AddScriptCommand(COMMAND_TALK)
+        ElseIf Token = "on" Then
             NextToken
-            ScriptCommands(I).Num1 = Val(Token)
+            If Token = "talk" Then
+                I = AddScriptCommand(COMMAND_ON_TALK)
+                NextToken
+                ScriptCommands(I).Str1 = Token
+            ElseIf Token = "touch" Then
+                I = AddScriptCommand(COMMAND_ON_TOUCH)
+                NextToken
+                ScriptCommands(I).Str1 = Token
+            Else
+                ParseDie Text
+            End If
         ElseIf Token = "map" Then
             I = AddScriptCommand(COMMAND_MAP)
             NextToken
@@ -2262,6 +2270,7 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
 
     ' Set script fields
     Script.ScriptType = ScriptType
+    Script.Name = ScriptName
     Script.CharacterNumber = CharacterNumber
     Script.Start = Start
     Script.Length = UBound(ScriptCommands) - (Start - 1)
@@ -2273,7 +2282,7 @@ End Sub
 
 Function ScriptTypeStr$(ScriptType As Long)
     If ScriptType = SCRIPT_LOOP Then
-        ScriptTypeStr$ = "script"
+        ScriptTypeStr$ = "loop"
     ElseIf ScriptType = SCRIPT_TALK Then
         ScriptTypeStr$ = "talk"
     ElseIf ScriptType = SCRIPT_TOUCH Then
@@ -2284,7 +2293,7 @@ Function ScriptTypeStr$(ScriptType As Long)
 End Function
 
 Sub WriteScript(File As Long, Script As Script)
-    Print #File, "    "; ScriptTypeStr$(Script.ScriptType)
+    Print #File, "    "; ScriptTypeStr$(Script.ScriptType); " "; Script.Name
     Dim I As Long, J As Long, Depth As Long
     For I = Script.Start To Script.Start + Script.Length - 1
         Dim Command As ScriptCommand
@@ -2303,8 +2312,10 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        face "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_SAY Then
             Print #File, "        say "; Command.Str1
-        ElseIf Command.CommandType = COMMAND_TALK Then
-            Print #File, "        talk "; Command.Num1
+        ElseIf Command.CommandType = COMMAND_ON_TALK Then
+            Print #File, "        on talk "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_ON_TOUCH Then
+            Print #File, "        on touch "; Command.Str1
         ElseIf Command.CommandType = COMMAND_MAP Then
             Print #File, "        map "; Command.Str1; " "; Command.Str2
         ElseIf Command.CommandType = COMMAND_ADD_ITEM Then
@@ -2374,7 +2385,7 @@ Sub UpdateScriptState(StateNumber As Long)
 
         If State.CommandNumber > Script.Length Then
             If Script.ScriptType = SCRIPT_LOOP Then
-                State.CommandNumber = 0
+                State.CommandNumber = 1
             Else
                 Exit Do
             End If
@@ -2442,8 +2453,13 @@ Sub UpdateScriptState(StateNumber As Long)
                 State.Frame = State.Frame + 1
                 Exit Do
             End If
-        ElseIf Command.CommandType = COMMAND_TALK Then
-            Characters(Script.CharacterNumber).TalkScriptNumber = Command.Num1
+        ElseIf Command.CommandType = COMMAND_ON_TALK Then
+            Characters(Script.CharacterNumber).TalkScriptNumber = _
+                FindScriptNumber(Script.CharacterNumber, Command.Str1)
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_ON_TOUCH Then
+            Characters(Script.CharacterNumber).TouchScriptNumber = _
+                FindScriptNumber(Script.CharacterNumber, Command.Str1)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_MAP Then
             MapFilename = Command.Str1
@@ -2727,3 +2743,14 @@ End Function
 Sub RemoveCharacter(I As Long)
     Characters(I).State = STATE_GONE
 End Sub
+
+Function FindScriptNumber(I As Long, ScriptName As String)
+    Dim J As Long, ScriptsStart As Long
+    ScriptsStart = Characters(I).ScriptsStart
+    For J = ScriptsStart To ScriptsStart + Characters(I).ScriptsLength - 1
+        If Scripts(J).Name = ScriptName Then
+            FindScriptNumber = J
+            Exit Function
+        End If
+    Next
+End Function

@@ -186,3 +186,5 @@
 [ ] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the
     back of the house.
+[ ] If you talk to pidgey just before he jumps, the game freezes!..
+    Because then his state isn't STANDING.

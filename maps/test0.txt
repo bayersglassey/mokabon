@@ -169,5 +169,25 @@ item
     name MOUNTAIN_BALL
     images  1 
     position  9  13 
+    talk
+        say It's the`ULTRABALL.
+        if choose No Yes Take it?
+            add item ULTRABALL  1 
+            remove 
+            say Got ULTRABALL.`Use it wisely...
+        else
+        end
+    end
+end
+
+item
+    name BALL1
+    images  1 
+    position  6  8 
+    talk
+        add item BIKE  1 
+        remove 
+        say You got a shiny`new BIKE!
+    end
 end
 

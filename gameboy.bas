@@ -10,8 +10,9 @@ NEWLINE = Chr$(13) ' Literal newline character
 ' Frames per second (how fast the animation is)
 Const FPS = 30
 
-' Set to True to jump everywhere instead of walking... for debugging purposes!
+' For debugging purposes:
 Const ALWAYS_JUMP = False
+Const CAN_ALWAYS_BIKE = False
 
 ' Set up random number generator
 Randomize Timer
@@ -159,6 +160,14 @@ Dim Shared RectangleY1 As Long
 Dim Shared RectangleX2 As Long
 Dim Shared RectangleY2 As Long
 
+' Mathematical operators
+Const OPERATOR_EQUAL = 1
+Const OPERATOR_NOT_EQUAL = 2
+Const OPERATOR_LESS = 3
+Const OPERATOR_LESS_OR_EQUAL = 4
+Const OPERATOR_MORE = 5
+Const OPERATOR_MORE_OR_EQUAL = 6
+
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO SCRIPTS
@@ -170,9 +179,12 @@ Const COMMAND_FACE = 3
 Const COMMAND_SAY = 4
 Const COMMAND_TALK = 5
 Const COMMAND_MAP = 6
-Const COMMAND_IF_CHOOSE = 7
-Const COMMAND_ELSE = 8
-Const COMMAND_END = 9
+Const COMMAND_ADD_ITEM = 7
+Const COMMAND_REMOVE = 8
+Const COMMAND_IF_CHOOSE = 9
+Const COMMAND_IF_ITEM = 10
+Const COMMAND_ELSE = 11
+Const COMMAND_END = 12
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -577,7 +589,10 @@ Do
                 NewY = PlayerY + FacingAddY(Characters(Player).Facing)
                 I = CollideCharacters(NewX, NewY, PLAYER, True)
                 If I > 0 Then
-                    If Characters(I).State = STATE_STANDING Then
+                    If _
+                        Characters(I).State = STATE_STANDING Or _
+                        Characters(I).State = STATE_ITEM _
+                    Then
                         ' We're talking to another character!..
                         ' Get them to face us, and run their talk script,
                         ' if any.
@@ -588,6 +603,12 @@ Do
                             SetScriptState TALKING_SCRIPT_STATE, _
                                 Characters(I).TalkScriptsStart _
                                     + Characters(I).TalkScriptNumber - 1
+                            ' Restart the main loop, to make sure we don't
+                            ' do stuff like execute non-player characters
+                            ' normally, which can result in bugs, like if
+                            ' the character we're now talking to decides to
+                            ' jump, the game will be frozen!..
+                            _Continue
                         End If
                     End If
                 End If
@@ -598,10 +619,11 @@ Do
                 KeyPressed(Asc("c")) And _
                 Characters(PLAYER).State = STATE_STANDING _
             Then
-                If RidingBike Then
+                If RidingBike(PLAYER) Then
                     Characters(PLAYER).TileStartY = 0
                 ElseIf Characters(PLAYER).TileStartY = 0 Then
-                    Characters(PLAYER).TileStartY = 1
+                    If CAN_ALWAYS_BIKE Or GetItemCount("BIKE") > 0 Then _
+                        Characters(PLAYER).TileStartY = 1
                 End If
             End If
         End If
@@ -1874,7 +1896,11 @@ End Sub
 
 Sub HandleCharacterAnimation(I As Long)
     If Characters(I).State = STATE_GONE Then Exit Sub
-    If Characters(I).State = STATE_ITEM Then Exit Sub
+    If Characters(I).State = STATE_ITEM Then
+        Characters(I).TileAddX = 0
+        Characters(I).TileAddY = 0
+        Exit Sub
+    End If
 
     Dim State As Long, Facing As Long
     State = Characters(I).State
@@ -1946,7 +1972,7 @@ Sub HandleCharacterAnimation(I As Long)
                 End If
             End If
         Else
-            If RidingBike Then
+            If RidingBike(I) Then
                 Characters(I).Frame = Frame + 2
             Else
                 Characters(I).Frame = Frame + 1
@@ -2101,6 +2127,21 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
             ScriptCommands(I).Str1 = Token
             NextToken
             ScriptCommands(I).Str2 = Token
+        ElseIf Token = "add" Then
+            NextToken
+            If Token = "item" Then
+                I = AddScriptCommand(COMMAND_ADD_ITEM)
+                NextToken
+                ScriptCommands(I).Str1 = Token
+                NextToken
+                ScriptCommands(I).Num1 = Val(Token)
+            Else
+                ParseDie Text
+            End If
+        ElseIf Token = "remove" Then
+            I = AddScriptCommand(COMMAND_REMOVE)
+            NextToken
+            ScriptCommands(I).Str1 = Token
         ElseIf Token = "if" Then
             NextToken
             If Token = "choose" Then
@@ -2110,6 +2151,16 @@ Sub ParseScript(File As Long, CharacterNumber As Long, ScriptType As Integer)
                 NextToken
                 ScriptCommands(I).Str2 = Token
                 ScriptCommands(I).Str3 = ParseText
+                Depth = Depth + 1
+            ElseIf Token = "item" Then
+                I = AddScriptCommand(COMMAND_IF_ITEM)
+                NextToken
+                ScriptCommands(I).Str1 = Token
+                NextToken
+                ScriptCommands(I).Num1 = ParseComparisonOperator(Token)
+                If ScriptCommands(I).Num1 = 0 Then ParseDie Text
+                NextToken
+                ScriptCommands(I).Num2 = Val(Token)
                 Depth = Depth + 1
             Else
                 ParseDie Text
@@ -2179,9 +2230,17 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        talk "; Command.Num1
         ElseIf Command.CommandType = COMMAND_MAP Then
             Print #File, "        map "; Command.Str1; " "; Command.Str2
+        ElseIf Command.CommandType = COMMAND_ADD_ITEM Then
+            Print #File, "        add item "; Command.Str1; " "; Command.Num1
+        ElseIf Command.CommandType = COMMAND_REMOVE Then
+            Print #File, "        remove "; Command.Str1
         ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
             Print #File, "        if choose "; Command.Str1; " "; _
                 Command.Str2; " "; Command.Str3
+            Depth = Depth + 1
+        ElseIf Command.CommandType = COMMAND_IF_ITEM Then
+            Print #File, "        if item "; Command.Str1; " "; _
+                OperatorStr$(Command.Num1); " "; Command.Num2
             Depth = Depth + 1
         ElseIf Command.CommandType = COMMAND_ELSE Then
             Print #File, "    else"
@@ -2249,6 +2308,7 @@ Sub UpdateScriptState(StateNumber As Long)
         If _
             Characters(Script.CharacterNumber).State <> STATE_STANDING _
             And Characters(Script.CharacterNumber).State <> STATE_ITEM _
+            And Characters(Script.CharacterNumber).State <> STATE_GONE _
         Then Exit Do
 
         Command = ScriptCommands(Script.Start + State.CommandNumber - 1)
@@ -2325,6 +2385,17 @@ Sub UpdateScriptState(StateNumber As Long)
             ' Exit this subroutine/script, and restart the game's main loop!
             RestartMainLoop = True
             Exit Sub
+        ElseIf Command.CommandType = COMMAND_ADD_ITEM Then
+            SetItemCount Command.Str1, _
+                GetItemCount(Command.Str1) + Command.Num1
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_REMOVE Then
+            If Command.Str1 <> "" Then
+                RemoveCharacter FindCharacter(Command.Str1)
+            Else
+                RemoveCharacter Script.CharacterNumber
+            End If
+            State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
             If State.Frame = 1 Then
                 ' Done choosing
@@ -2346,6 +2417,14 @@ Sub UpdateScriptState(StateNumber As Long)
                 TalkingChoice = False
                 State.Frame = State.Frame + 1
                 Exit Do
+            End If
+        ElseIf Command.CommandType = COMMAND_IF_ITEM Then
+            I = GetItemCount(Command.Str1)
+            If EvaluateOperator(I, Command.Num1, Command.Num2) Then
+                State.CommandNumber = State.CommandNumber + 1
+            Else
+                State.CommandNumber = FindScriptStateCommandNumber( _
+                    State, COMMAND_ELSE) + 1
             End If
         ElseIf Command.CommandType = COMMAND_ELSE Then
             ' We've reached the "else" if an "if" block, so let's jump to
@@ -2497,6 +2576,81 @@ Sub SetCharacterTileStartNumber(I As Long, Number As Long)
     Characters(I).TileStartY = Int(Number / 10)
 End Sub
 
-Function RidingBike
-    RidingBike = Characters(PLAYER).TileStartY = 1
+Function RidingBike(I As Long)
+    RidingBike = Not Characters(I).IsPokemon _
+        And Characters(I).TileStartY = 1
 End Function
+
+Function FindItem(ItemName As String)
+    Dim I As Long
+    For I = 1 To UBound(Items)
+        If Items(I).Name = ItemName Then
+            FindItem = I
+            Exit Function
+        End If
+    Next
+End Function
+
+Function GetItemCount(ItemName As String)
+    Dim I As Long
+    I = FindItem(ItemName)
+    If I > 0 Then GetItemCount = Items(I).Count
+End Function
+
+Sub SetItemCount(ItemName As String, Count As Long)
+    Dim I As Long
+    I = FindItem(ItemName)
+    If I = 0 Then
+        ' Add a new item first...
+        I = UBound(Items) + 1
+        ReDim _Preserve Items(I) As Item
+        Items(I).Name = ItemName
+        Items(I).Hidden = False
+    End If
+    If I > 0 Then Items(I).Count = Count
+End Sub
+
+Function EvaluateOperator(X As Long, Operator As Long, Y As Long)
+    If Operator = OPERATOR_EQUAL Then
+        EvaluateOperator = X = Y
+    ElseIf Operator = OPERATOR_NOT_EQUAL Then
+        EvaluateOperator = X <> Y
+    ElseIf Operator = OPERATOR_LESS Then
+        EvaluateOperator = X < Y
+    ElseIf Operator = OPERATOR_LESS_OR_EQUAL Then
+        EvaluateOperator = X <= Y
+    ElseIf Operator = OPERATOR_MORE Then
+        EvaluateOperator = X > Y
+    ElseIf Operator = OPERATOR_MORE_OR_EQUAL Then
+        EvaluateOperator = X >= Y
+    Else
+        Die "Unknown operator: " + Str$(Operator)
+    End If
+End Function
+
+Function ParseComparisonOperator(Text As String)
+    If Text = "=" Then ParseComparisonOperator = OPERATOR_EQUAL
+    If Text = "!=" Then ParseComparisonOperator = OPERATOR_NOT_EQUAL
+    If Text = "<" Then ParseComparisonOperator = OPERATOR_LESS
+    If Text = "<=" Then ParseComparisonOperator = OPERATOR_LESS_OR_EQUAL
+    If Text = ">" Then ParseComparisonOperator = OPERATOR_MORE
+    If Text = ">=" Then ParseComparisonOperator = OPERATOR_MORE_OR_EQUAL
+End Function
+
+Function ParseOperator(Text As String)
+    ParseOperator = ParseComparisonOperator(Text)
+    ' Could add support for non-comparison operators here...
+End Function
+
+Function OperatorStr$(Operator As Long)
+    If Operator = OPERATOR_EQUAL Then OperatorStr$ = "="
+    If Operator = OPERATOR_NOT_EQUAL Then OperatorStr$ = "!="
+    If Operator = OPERATOR_LESS Then OperatorStr$ = "<"
+    If Operator = OPERATOR_LESS_OR_EQUAL Then OperatorStr$ = "<="
+    If Operator = OPERATOR_MORE Then OperatorStr$ = ">"
+    If Operator = OPERATOR_MORE_OR_EQUAL Then OperatorStr$ = ">="
+End Function
+
+Sub RemoveCharacter(I As Long)
+    Characters(I).State = STATE_GONE
+End Sub

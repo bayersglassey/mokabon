@@ -139,21 +139,21 @@
         IsPokemon.
         Have buttons for incrementing/decrementing TileStartX and TileStartY.
 [ ] Add player's inventory
-    [ ] Type Item: Name As String, Count As Long, IsHidden As Integer
+    [X] Type Item: Name As String, Count As Long, IsHidden As Integer
         ...where hidden items can be used to implement global variables.
         Yes, it's a hack.
-    [ ] Add Start button menu, with an ITEMS option
-    [ ] Add script commands for adding items to inventory
-    [ ] Add script commands like:
+    [X] Add script commands for adding items to inventory
+    [X] Add script commands like:
             if itemcount pokeball >= 3
              ...
             else
              ...
             end
+    [X] Add a bike item, when you have it, gb's Select button puts you
+        on/off it.
+    [ ] Add Start button menu, with an ITEMS option
     [ ] Need a way to save/load the game, including player's position and
         items, etc.
-    [ ] Add a bike item, when you have it, gb's Select button puts you
-        on/off it.
 [ ] Add money
 
 
@@ -177,6 +177,9 @@
 [X] Add map tiles for houses etc.
 [X] Tile selection mode: need to scroll if there are lots of map tiles...
 [X] Replace "start_y" in the map format with something else... "images"?
+[X] If you talk to pidgey just before he jumps, the game freezes!..
+    Because then his state isn't STANDING.
+    ...ok, I *believe* this is now fixed.
 [ ] Replace Character's TalkScriptsStart, TalkScriptsLength with just
     ScriptsStart, ScriptsLength.
     And then we can e.g. remove the check when parsing "script" which
@@ -187,7 +190,5 @@
 [ ] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the
     back of the house.
-[ ] If you talk to pidgey just before he jumps, the game freezes!..
-    Because then his state isn't STANDING.
 [ ] If you move JIMBERT in the editor, then talk to them, you see the
     "SQUAWK!" message, followed by the usual JIMBERT script.

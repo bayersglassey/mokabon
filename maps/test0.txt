@@ -154,3 +154,14 @@ character
     end
 end
 
+character
+    name COP
+    hidden
+    start_y  0 
+    facing d
+    position  15  1 
+    talk
+        say Shhh! I'm waiting for the criminal!
+    end
+end
+

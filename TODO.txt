@@ -190,8 +190,9 @@
     ScriptsStart, ScriptsLength.
     And then we can e.g. remove the check when parsing "script" which
     requires it to come before "talk".
-[ ] In MAP_SCROLL_MODE, characters should also be "scrolled" (X, Y,
+[X] In MAP_SCROLL_MODE, characters should also be "scrolled" (X, Y,
     StartX, and StartY).
+[X] Add subroutines for serializing data structures (for debugging)
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the

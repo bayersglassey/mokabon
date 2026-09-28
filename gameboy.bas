@@ -187,6 +187,11 @@ Const OPERATOR_LESS_OR_EQUAL = 4
 Const OPERATOR_MORE = 5
 Const OPERATOR_MORE_OR_EQUAL = 6
 
+' Global variables used for serialization, that is, building strings out
+' of complex data
+Dim Shared Serialized As String
+Dim Shared SerializeNeedComma As Integer
+
 
 ' #################################################################
 ' # DECLARATIONS RELATED TO SCRIPTS
@@ -194,14 +199,15 @@ Const OPERATOR_MORE_OR_EQUAL = 6
 Const COMMAND_WAIT = 0
 Const COMMAND_WALK = 1
 Const COMMAND_JUMP = 2
-Const COMMAND_FACE = 3
-Const COMMAND_SAY = 4
-Const COMMAND_ON_TALK = 5
-Const COMMAND_ON_TOUCH = 6
-Const COMMAND_MAP = 7
-Const COMMAND_ADD_ITEM = 8
-Const COMMAND_REMOVE = 9
-Const COMMAND_IF_CHOOSE = 10
+Const COMMAND_SHORT_JUMP = 3
+Const COMMAND_FACE = 4
+Const COMMAND_SAY = 5
+Const COMMAND_ON_TALK = 6
+Const COMMAND_ON_TOUCH = 7
+Const COMMAND_MAP = 8
+Const COMMAND_ADD_ITEM = 9
+Const COMMAND_REMOVE = 10
+Const COMMAND_IF_CHOOSE = 11
 Const COMMAND_IF_ITEM = 12
 Const COMMAND_ELSE = 13
 Const COMMAND_END = 14
@@ -381,7 +387,7 @@ Const STATE_WALKING = 1
 Const STATE_JUMPING = 2
 Const STATE_SHORT_JUMPING = 3
 Const STATE_GONE = 4 ' Don't render, collide with, etc this character
-Const STATE_ITEM = 5 ' When character is an item, their State is always this
+Const STATE_ITEM = 5 ' For when character's IsItem is True
 
 Type Character
     ' Character's name; should be unique within a given map
@@ -546,8 +552,8 @@ Do
                 RestartMainLoop = False
                 _Continue
             End If
-            HandleCharacterAnimation _
-                Scripts(TALKING_SCRIPT_STATE).CharacterNumber
+            HandleCharacterAnimation Scripts(ScriptStates( _
+                TALKING_SCRIPT_STATE).ScriptNumber).CharacterNumber
         End If
 
         RenderMap
@@ -657,8 +663,8 @@ Do
                         ' if any.
                         Characters(I).Facing = _
                             (Characters(PLAYER).Facing + 2) Mod 4
+                        HandleCharacterAnimation I
                         If Characters(I).TalkScriptNumber > 0 Then
-                            HandleCharacterAnimation I
                             Talking = True
                             SetScriptState TALKING_SCRIPT_STATE, _
                                 Characters(I).TalkScriptNumber
@@ -940,7 +946,7 @@ Sub HandleMapScrollMode
 End Sub
 
 Sub ScrollMap(AddX As Long, AddY As Long)
-    Dim X As Long, Y As Long, X2 As Long, Y2 As Long
+    Dim X As Long, Y As Long, X2 As Long, Y2 As Long, I As Long
     Dim TempValue As Long
 
     ' The start and end values of the for-loops
@@ -974,6 +980,17 @@ Sub ScrollMap(AddX As Long, AddY As Long)
             Map(X2, Y2) = TempValue
         Next
     Next
+
+    For I = 2 To UBound(Characters)
+        Characters(I).X = Wrap(Characters(I).X + AddX, MapWidth)
+        Characters(I).Y = Wrap(Characters(I).Y + AddY, MapHeight)
+        Characters(I).StartX = Wrap(Characters(I).StartX + AddX, MapWidth)
+        Characters(I).StartY = Wrap(Characters(I).StartY + AddY, MapHeight)
+    Next
+    Characters(PLAYER).StartX = Wrap(Characters(PLAYER).StartX - AddX, _
+        MapWidth)
+    Characters(PLAYER).StartY = Wrap(Characters(PLAYER).StartY - AddY, _
+        MapHeight)
 
     RenderMapImage
 End Sub
@@ -1290,6 +1307,15 @@ Sub WriteCharacter(I As Long, File As Long)
     Next
     Print #File, "end"
 End Sub
+
+Function StateStr$(State As Long)
+    If State = STATE_STANDING Then StateStr$ = "standing"
+    If State = STATE_WALKING Then StateStr$ = "walking"
+    If State = STATE_JUMPING Then StateStr$ = "jumping"
+    If State = STATE_SHORT_JUMPING Then StateStr$ = "short jumping"
+    If State = STATE_GONE Then StateStr$ = "gone"
+    If State = STATE_ITEM Then StateStr$ = "item"
+End Function
 
 Function ParseFacing(Char As String)
     If Char = "u" Then
@@ -2186,6 +2212,16 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
             NextToken
             ScriptCommands(I).Num1 = ParseFacing(Token)
             ScriptCommands(I).Num2 = 1 ' Jump once per command
+        ElseIf Token = "short" Then
+            NextToken
+            If Token = "jump" Then
+                I = AddScriptCommand(COMMAND_SHORT_JUMP)
+                NextToken
+                ScriptCommands(I).Num1 = ParseFacing(Token)
+                ScriptCommands(I).Num2 = 1 ' Jump once per command
+            Else
+                ParseDie Text
+            End If
         ElseIf Token = "face" Then
             I = AddScriptCommand(COMMAND_FACE)
             NextToken
@@ -2308,6 +2344,8 @@ Sub WriteScript(File As Long, Script As Script)
                 Command.Num2
         ElseIf Command.CommandType = COMMAND_JUMP Then
             Print #File, "        jump "; FacingStr$(Command.Num1)
+        ElseIf Command.CommandType = COMMAND_SHORT_JUMP Then
+            Print #File, "        short jump "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_FACE Then
             Print #File, "        face "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_SAY Then
@@ -2412,7 +2450,8 @@ Sub UpdateScriptState(StateNumber As Long)
             End If
         ElseIf _
             Command.CommandType = COMMAND_WALK Or _
-            Command.CommandType = COMMAND_JUMP _
+            Command.CommandType = COMMAND_JUMP Or _
+            Command.CommandType = COMMAND_SHORT_JUMP _
         Then
             If State.Frame >= Command.Num2 Then
                 ' Done walking/jumping!..
@@ -2426,6 +2465,9 @@ Sub UpdateScriptState(StateNumber As Long)
                 If Command.CommandType = COMMAND_JUMP Then
                     Multiplier = 2
                     Characters(I).State = STATE_JUMPING
+                ElseIf Command.CommandType = COMMAND_SHORT_JUMP Then
+                    Multiplier = 1
+                    Characters(I).State = STATE_SHORT_JUMPING
                 Else
                     Multiplier = 1
                     Characters(I).State = STATE_WALKING
@@ -2754,3 +2796,102 @@ Function FindScriptNumber(I As Long, ScriptName As String)
         End If
     Next
 End Function
+
+Sub SerializeStart
+    Serialized = ""
+    SerializeNeedComma = False
+End Sub
+
+Sub SerializeOpen
+    Serialized = Serialized + "("
+    SerializeNeedComma = False
+End Sub
+
+Sub SerializeClose
+    Serialized = Serialized + ")"
+    SerializeNeedComma = True
+End Sub
+
+Sub SerializeField(FieldName As String)
+    If SerializeNeedComma Then Serialized = Serialized + ", "
+    Serialized = Serialized + FieldName + "="
+    SerializeNeedComma = False
+End Sub
+
+Sub SerializeString(S As String)
+    If SerializeNeedComma Then Serialized = Serialized + ", "
+    Serialized = Serialized + QUOTE + S + QUOTE
+    SerializeNeedComma = True
+End Sub
+
+Sub SerializeNumber(I As Long)
+    If SerializeNeedComma Then Serialized = Serialized + ", "
+    Serialized = Serialized + Str$(I)
+    SerializeNeedComma = True
+End Sub
+
+Sub SerializeNull
+    If SerializeNeedComma Then Serialized = Serialized + ", "
+    Serialized = Serialized + "null"
+    SerializeNeedComma = True
+End Sub
+
+Sub SerializeScript(Script As Script)
+    SerializeOpen
+    SerializeString ScriptTypeStr$(Script.ScriptType)
+    SerializeString Script.Name
+    SerializeField "character"
+    SerializeString Characters(Script.CharacterNumber).Name
+    SerializeField "length"
+    SerializeNumber Script.Length
+    SerializeClose
+End Sub
+
+Sub SerializeScriptState(State As ScriptState)
+    SerializeOpen
+    SerializeScript Scripts(State.ScriptNumber)
+    SerializeField "command"
+    SerializeNumber State.CommandNumber
+    SerializeField "frame"
+    SerializeNumber State.Frame
+    SerializeClose
+End Sub
+
+Sub DumpScriptState(I As Long)
+    SerializeStart
+    SerializeScriptState ScriptStates(I)
+    ShowMessage Serialized
+End Sub
+
+Sub SerializeCharacter(Character As Character)
+    SerializeOpen
+    SerializeString Character.Name
+    SerializeString StateStr$(Character.State)
+    SerializeField "frame"
+    SerializeNumber Character.Frame
+    SerializeField "scriptState"
+    If Character.ScriptStateNumber > 0 Then
+        SerializeScriptState ScriptStates(Character.ScriptStateNumber)
+    Else
+        SerializeNull
+    End If
+    SerializeField "talkScript"
+    If Character.TalkScriptNumber > 0 Then
+        SerializeScript Scripts(Character.TalkScriptNumber)
+    Else
+        SerializeNull
+    End If
+    SerializeField "touchScript"
+    If Character.TouchScriptNumber > 0 Then
+        SerializeScript Scripts(Character.TouchScriptNumber)
+    Else
+        SerializeNull
+    End If
+    SerializeClose
+End Sub
+
+Sub DumpCharacter(I As Long)
+    SerializeStart
+    SerializeCharacter Characters(I)
+    ShowMessage Serialized
+End Sub

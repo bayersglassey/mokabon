@@ -138,6 +138,7 @@
     [X] In CHARACTER_EDITOR_MODE, have buttons for toggling IsHidden, IsItem,
         IsPokemon.
         Have buttons for incrementing/decrementing TileStartX and TileStartY.
+[X] Walking off sides of map should optionally lead to other maps
 [ ] Add player's inventory
     [X] Type Item: Name As String, Count As Long, IsHidden As Integer
         ...where hidden items can be used to implement global variables.
@@ -193,6 +194,7 @@
 [X] In MAP_SCROLL_MODE, characters should also be "scrolled" (X, Y,
     StartX, and StartY).
 [X] Add subroutines for serializing data structures (for debugging)
+[ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the

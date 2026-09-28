@@ -257,3 +257,8 @@ solid
 # house roof middle secret
 07 07
 17 17
+
+# mountain plateau, solid
+solid
+11 11
+11 11

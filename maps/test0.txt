@@ -22,11 +22,16 @@ tiles  24   26
 5 0 0 6 7 6 2 2 2 2 2 0 0 0 0 0 0 0 0 0 0 0 0 5
 5 0 0 0 7 1 2 2 1 0 0 0 0 E F F F 10 0 0 0 0 0 5
 F 10 0 0 31 0 2 2 0 0 0 E F F D D D F F 10 0 0 E F
-D 15 0 0 0 0 0 0 0 0 0 11 D 16 13 13 13 17 D 15 0 0 11 D
-D 15 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 11 D
-D 15 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 11 D
-D 15 0 0 0 0 1 2 0 0 0 8 8 8 0 0 0 8 8 8 0 0 11 D
-D F F F F 10 2 2 E F F F F F F F F F F F F F F D
+34 15 0 0 0 0 0 0 0 0 0 11 D 16 13 13 13 17 D 15 0 0 11 34
+34 15 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 11 34
+34 15 0 0 0 0 0 0 0 0 0 11 D 15 0 0 0 11 D 15 0 0 11 34
+34 15 0 0 0 0 1 2 0 0 0 8 8 8 0 0 0 8 8 8 0 0 11 34
+34 F F F F 10 2 2 E F F F F F F F F F F F F F F 34
+
+link u maps/route0.txt
+link r 
+link d maps/route0.txt
+link l 
 
 facing d
 position  6  8 
@@ -141,7 +146,7 @@ character
     facing d
     position  20  10 
     touch 
-        map test1 DOOR1
+        map house0 DOOR1
     end
 end
 
@@ -152,7 +157,7 @@ character
     facing d
     position  19  15 
     touch 
-        map test1 DOOR2
+        map house0 DOOR2
     end
 end
 
@@ -236,3 +241,4 @@ character
         end
     end
 end
+

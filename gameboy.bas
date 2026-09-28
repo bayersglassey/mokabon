@@ -11,8 +11,8 @@ NEWLINE = Chr$(13) ' Literal newline character
 Const FPS = 30
 
 ' For debugging purposes:
-Const ALWAYS_JUMP = False
-Const CAN_ALWAYS_BIKE = False
+Dim Shared CAN_ALWAYS_BIKE As Integer
+CAN_ALWAYS_BIKE = False
 
 ' Set up random number generator
 Randomize Timer
@@ -299,6 +299,12 @@ InitializeMapTileset 18, 1220
 ' The file to which we will save the map
 Dim Shared MapFilename As String
 
+' The files of maps to which we can travel by walking off the edges of
+' the map (or "" if an edge can't be walked off of).
+' The indexes correspond to FACING_UP, etc.
+' See also: ParseFacing
+Dim Shared MapLinkFilenames(0 To 3) As String
+
 ' Index into MapTilesets
 Dim Shared MapTilesetNumber As Long
 
@@ -373,9 +379,10 @@ Dim Shared MiscCharacterTileset As Tileset
 MiscCharacterTileset = CharacterTileset
 MiscCharacterTileset.StartY = 1087
 
-' Directions a character can be facing
+' Directions a character can be facing.
 ' NOTE: these numbers are chosen so that turning to the right means adding
 ' 1 (Mod 4).
+' See also: ParseFacing
 Const FACING_UP = 0
 Const FACING_RIGHT = 1
 Const FACING_DOWN = 2
@@ -626,8 +633,14 @@ Do
                 Dim CanMove As Integer
                 CanMove = CanMoveTo(PlayerX, PlayerY, NewX, NewY, _
                     MoveDirection, PLAYER)
-                If ALWAYS_JUMP Then CanMove = 2 ' For debugging!
-                If CanMove = 1 Then
+                If Not WithinMap(NewX, NewY) Then
+                    ' Maybe walk off the edge of the map
+                    If MapLinkFilenames(MoveDirection) <> "" Then
+                        LoadLinkedMap MoveDirection
+                        ' Restart the main loop
+                        _Continue
+                    End If
+                ElseIf CanMove = 1 Then
                     ' We are ok to walk to the new map position
                     Characters(PLAYER).X = NewX
                     Characters(PLAYER).Y = NewY
@@ -679,6 +692,13 @@ Do
                 End If
             End If
 
+            ' Cheat: give yourself the ability to bike!..
+            If KeyPressed(Asc("C")) Then
+                CAN_ALWAYS_BIKE = True
+                If Characters(PLAYER).State = STATE_STANDING Then _
+                    RideBike PLAYER
+            End If
+
             ' Handle gameboy's "Select" button
             If _
                 KeyPressed(ButtonSelectCode) And _
@@ -688,7 +708,7 @@ Do
                     Characters(PLAYER).TileStartY = 0
                 ElseIf Characters(PLAYER).TileStartY = 0 Then
                     If CAN_ALWAYS_BIKE Or GetItemCount("BIKE") > 0 Then _
-                        Characters(PLAYER).TileStartY = 1
+                        RideBike PLAYER
                 End If
             End If
 
@@ -1271,6 +1291,11 @@ Sub SaveMap(Filename As String)
         Next
         Print #File, ""
 
+        For I = 0 To 3
+            Print #File, "link "; FacingStr$(I); " "; MapLinkFilenames(I)
+        Next
+        Print #File, ""
+
         Print #File, "facing "; FacingStr$(Characters(PLAYER).StartFacing)
         Print #File, "position "; _
             Characters(PLAYER).StartX; Characters(PLAYER).StartY
@@ -1341,8 +1366,7 @@ End Function
 Sub LoadMap(Filename As String)
     Dim File As Long
     Dim Text As String
-    Dim X As Long
-    Dim Y As Long
+    Dim I As Long, X As Long, Y As Long
 
     LineNumber = 0
     MapTilesetNumber = 0
@@ -1355,6 +1379,10 @@ Sub LoadMap(Filename As String)
     ReDim Characters(1) As Character
     InitializeCharacter PLAYER
     Characters(PLAYER).Name = "PLAYER"
+
+    For I = 0 To 3
+        MapLinkFilenames(I) = ""
+    Next
 
     File = FreeFile
     Open Filename For Input As File
@@ -1389,6 +1417,14 @@ Sub LoadMap(Filename As String)
             ' Reset the character: they are now standing in the middle of the map.
             Characters(PLAYER).X = MapWidth / 2
             Characters(PLAYER).Y = MapHeight / 2
+        ElseIf Token = "link" Then
+            Dim LinkFilename As String
+            NextToken
+            I = ParseFacing(Token)
+            NextToken
+            LinkFilename = Token
+            FixMapFilename LinkFilename
+            MapLinkFilenames(I) = LinkFilename
         ElseIf Token = "position" Then
             NextToken
             Characters(PLAYER).X = Val(Token)
@@ -1415,6 +1451,65 @@ Sub LoadMap(Filename As String)
     LoadMapTiles
 
     RenderMapImage
+End Sub
+
+Function GetFirstNonSolidTileX(Y As Long)
+    Dim X As Long
+    For X = 0 To MapWidth - 1
+        If MapTiles(Map(X, Y)).Solidity = NOT_SOLID Then
+            GetFirstNonSolidTileX = X
+            Exit Function
+        End If
+    Next
+End Function
+
+Function GetFirstNonSolidTileY(X As Long)
+    Dim Y As Long
+    For Y = 0 To MapHeight - 1
+        If MapTiles(Map(X, Y)).Solidity = NOT_SOLID Then
+            GetFirstNonSolidTileY = Y
+            Exit Function
+        End If
+    Next
+End Function
+
+Sub LoadLinkedMap(Facing As Long)
+
+    ' Save some information about where player was on the map they left
+    Dim WasRidingBike As Integer
+    WasRidingBike = RidingBike(PLAYER)
+    Dim Offset As Long
+    If Facing = FACING_UP Then
+        Offset = PlayerX - GetFirstNonSolidTileX(0)
+    ElseIf Facing = FACING_RIGHT Then
+        Offset = PlayerY - GetFirstNonSolidTileY(MapWidth - 1)
+    ElseIf Facing = FACING_DOWN Then
+        Offset = PlayerX - GetFirstNonSolidTileX(MapHeight - 1)
+    ElseIf Facing = FACING_LEFT Then
+        Offset = PlayerY - GetFirstNonSolidTileY(0)
+    End If
+
+    ' Load the new map
+    MapFilename = MapLinkFilenames(Facing)
+    LoadMap MapFilename
+
+    ' Update player's position, etc on the new map
+    If WasRidingBike Then RideBike PLAYER
+    Characters(PLAYER).Facing = Facing
+    If Facing = FACING_UP Then
+        Characters(Player).X = GetFirstNonSolidTileX(MapHeight - 1) + Offset
+        Characters(Player).Y = MapHeight - 1
+    ElseIf Facing = FACING_RIGHT Then
+        Characters(Player).X = 0
+        Characters(Player).Y = GetFirstNonSolidTileY(0) + Offset
+    ElseIf Facing = FACING_DOWN Then
+        Characters(Player).X = GetFirstNonSolidTileX(0) + Offset
+        Characters(Player).Y = 0
+    ElseIf Facing = FACING_LEFT Then
+        Characters(Player).X = MapWidth - 1
+        Characters(Player).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
+    End If
+    SetCharacterStartFields PLAYER
 End Sub
 
 Sub InitializeCharacter(I As Long)
@@ -1785,9 +1880,13 @@ Sub HandleModeSwitching
     ' Map saving/loading
     If KeyPressed(Asc("f")) Then
         _Dest 0
+        Dim NewFilename As String
         Print "Current map filename: " + MapFilename
-        Input "Change map filename: ", MapFilename
-        FixMapFilename
+        Input "Change map filename: ", NewFilename
+        If NewFilename <> "" Then
+            MapFilename = NewFilename
+            FixMapFilename MapFilename
+        End If
         ' The enter key was just pressed (because we used Input), so
         ' make sure we don't immediately exit the map editor because
         ' of that!..
@@ -2505,8 +2604,13 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_MAP Then
             MapFilename = Command.Str1
-            FixMapFilename
+            FixMapFilename MapFilename
+
+            ' Load the indicated map
+            Dim WasRidingBike As Integer
+            WasRidingBike = RidingBike(PLAYER)
             LoadMap MapFilename
+            If WasRidingBike Then RideBike PLAYER
 
             ' Locate the player at the (probably hidden) character indicated
             ' by the script
@@ -2662,11 +2766,12 @@ Sub RenderTalkingText
     RenderTalkBox Text
 End Sub
 
-Sub FixMapFilename
-    If Not Instr(MapFilename, "/") Then _
-        MapFilename = "maps/" + MapFilename
-    If Not Instr(MapFilename, ".") Then _
-        MapFilename = MapFilename + ".txt"
+Sub FixMapFilename(Filename As String)
+    ' NOTE: strings are pass-by-reference, so by modifying Filename here, we
+    ' actually modify the string which was passed in!..
+    If Filename = "" Then Exit Sub
+    If Instr(Filename, "/") = 0 Then Filename = "maps/" + Filename
+    If Instr(Filename, ".") = 0 Then Filename = Filename + ".txt"
 End Sub
 
 Function ScriptFindNextElseOrEnd(Script As Script, CommandNumber As Long)
@@ -2711,6 +2816,10 @@ Function RidingBike(I As Long)
     RidingBike = Not Characters(I).IsPokemon _
         And Characters(I).TileStartY = 1
 End Function
+
+Sub RideBike(I As Long)
+    Characters(I).TileStartY = 1
+End Sub
 
 Function FindItem(ItemName As String)
     Dim I As Long
@@ -2895,3 +3004,10 @@ Sub DumpCharacter(I As Long)
     SerializeCharacter Characters(I)
     ShowMessage Serialized
 End Sub
+
+Function CopyStr$(S As String)
+    ' This silly function makes a copy of the given string.
+    ' This is needed because strings are pass-by-reference, and assigning
+    ' a parameter as the return value apparently creates a new reference.
+    CopyStr$ = S
+End Function

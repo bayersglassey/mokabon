@@ -139,7 +139,7 @@ character
     facing d
     position  19  9 
     touch 
-        map test1 DOOR1
+        map house0 DOOR1
     end
 end
 
@@ -150,7 +150,7 @@ character
     facing d
     position  18  14 
     touch 
-        map test1 DOOR2
+        map house0 DOOR2
     end
 end
 

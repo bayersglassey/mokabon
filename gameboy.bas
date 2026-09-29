@@ -43,15 +43,15 @@ ButtonSelectCode = Asc("c")
 ButtonStartCode = EnterCode
 
 ' Size of the gameboy's screen in pixels
-Const TrueScreenWidth = 160
-Const TrueScreenHeight = 144
+Const ScreenWidth = 160 ' 16 * 10
+Const ScreenHeight = 144 ' 16 * 9
 
 ' We "zoom" the screen, that is, stretch it when rendering it.
 ' So, if ScreenZoom is 3, then each pixel on the gameboy's screen becomes
 ' a 3x3 square on the computer's screen.
 Const ScreenZoom = 3
-Const ScreenWidth = TrueScreenWidth * ScreenZoom
-Const ScreenHeight = TrueScreenHeight * ScreenZoom
+Const WindowWidth = ScreenWidth * ScreenZoom
+Const WindowHeight = ScreenHeight * ScreenZoom
 
 ' The program's current "mode", e.g. whether you're walking around, or
 ' editing the map, etc
@@ -79,7 +79,7 @@ Const TileSelectorWidth = 8
 
 ' The image on the game boy's screen
 Dim Shared ScreenImage As Long
-ScreenImage = _NewImage(TrueScreenWidth, TrueScreenHeight, 32)
+ScreenImage = _NewImage(ScreenWidth, ScreenHeight, 32)
 
 ' Load some images, generally for use as tilesets
 Dim Shared TitleImage As Long
@@ -523,7 +523,7 @@ MapFilename = "maps/test0.txt"
 LoadMap MapFilename
 
 ' Set up the window/screen
-Screen _NewImage(ScreenWidth, ScreenHeight, 32)
+Screen _NewImage(WindowWidth, WindowHeight, 32)
 _Title "Gameboy"
 _ScreenMove _Middle
 
@@ -858,8 +858,8 @@ Do
         Die "Unknown mode: " + Mode
     End If
 
-    ' Render game boy's screen to actual screen
-    RenderScreen
+    ' Copy game boy's screen to actual screen
+    CopyScreen
 
     ' While the H key is being held down, show the "help" message
     If _KeyDown(Asc("h")) Then PrintHelp
@@ -1502,6 +1502,8 @@ Sub LoadLinkedMap(Facing As Long)
         Offset = PlayerY - GetFirstNonSolidTileY(0)
     End If
 
+    FadeOut
+
     ' Load the new map
     MapFilename = MapLinkFilenames(Facing)
     LoadMap MapFilename
@@ -1522,6 +1524,8 @@ Sub LoadLinkedMap(Facing As Long)
         Characters(Player).X = MapWidth - 1
         Characters(Player).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
     End If
+
+    FadeIn
 End Sub
 
 Sub InitializeCharacter(I As Long)
@@ -1787,8 +1791,8 @@ Sub RenderMap
     ' game boy's screen
     Dim MapScrollX As Long
     Dim MapScrollY As Long
-    MapScrollX = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    MapScrollY = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+    MapScrollX = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    MapScrollY = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
 
     _PutImage _
         (MapScrollX, MapScrollY) - ( _
@@ -1821,8 +1825,8 @@ Sub RenderMapTiles
     ' Called when Mode = TILE_SELECTOR_MODE.
     ' Render all map tiles as a grid for the user to select from.
 
-    Const ExtraX = (TrueScreenWidth - TileSelectorWidth * MapTileWidth) / 2
-    Const ExtraY = TrueScreenHeight / 2 - 8
+    Const ExtraX = (ScreenWidth - TileSelectorWidth * MapTileWidth) / 2
+    Const ExtraY = ScreenHeight / 2 - 8
 
     _Dest ScreenImage
 
@@ -1851,7 +1855,7 @@ Sub RenderSelectedMapTiles
     ' at the bottom of the screen
     Dim X As Long, Y As Long, I As Long
     Const ExtraX = 0
-    Const ExtraY = TrueScreenHeight - MapTileHeight - 1
+    Const ExtraY = ScreenHeight - MapTileHeight - 1
     _Dest ScreenImage
     For I = 1 To 10
         X = (I - 2 + 10) Mod 10 ' Causes 1 to be at left, 0 at right
@@ -1859,7 +1863,7 @@ Sub RenderSelectedMapTiles
         RenderMapTileAt MapTiles(SelectedMapTiles(I)), _
             X, Y, ExtraX, ExtraY
     Next
-    RenderSelectionBox ExtraX, ExtraY, TrueScreenWidth, MapTileHeight
+    RenderSelectionBox ExtraX, ExtraY, ScreenWidth, MapTileHeight
 End Sub
 
 Sub RenderTileset
@@ -1881,10 +1885,10 @@ Sub RenderTileset
         )
 End Sub
 
-Sub RenderScreen
+Sub CopyScreen
     ' Draw the game boy's screen (that is, ScreenImage) on the actual screen
     ' (that is, the program's window)
-    _PutImage (0, 0)-(ScreenWidth - 1, ScreenHeight - 1), ScreenImage, 0
+    _PutImage (0, 0)-(WindowWidth - 1, WindowHeight - 1), ScreenImage, 0
 End Sub
 
 Sub HandleModeSwitching
@@ -2209,8 +2213,8 @@ Sub RenderCharacter(I As Long)
 
     ' The location in pixels of the top-left corner of the map on the
     ' game boy's screen
-    X = TrueScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    Y = TrueScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+    X = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    Y = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
 
     If Character.IsHidden Then
         ' In "character editor" mode, show an exclamation mark over
@@ -2618,6 +2622,8 @@ Sub UpdateScriptState(StateNumber As Long)
             MapFilename = Command.Str1
             FixMapFilename MapFilename
 
+            FadeOut
+
             ' Load the indicated map
             Dim WasRidingBike As Integer
             WasRidingBike = RidingBike(PLAYER)
@@ -2637,6 +2643,8 @@ Sub UpdateScriptState(StateNumber As Long)
             Characters(PLAYER).Y = PlayerY + _
                 FacingAddY(Characters(PLAYER).Facing)
             Characters(PLAYER).State = STATE_WALKING
+
+            FadeIn
 
             ' Okay, we loaded a different map.
             ' Exit this subroutine/script, and restart the game's main loop!
@@ -3029,3 +3037,69 @@ Function CopyStr$(S As String)
     ' a parameter as the return value apparently creates a new reference.
     CopyStr$ = S
 End Function
+
+Sub RenderGameScreen
+    ' Simple way to render the game's screen, i.e. the map plus characters
+    Dim I As Long
+    _Dest ScreenImage
+    Cls
+    For I = 1 To UBound(Characters)
+        HandleCharacterAnimation I
+    Next
+    RenderMap
+    For I = 1 To UBound(Characters)
+        RenderCharacter I
+    Next
+End Sub
+
+Sub FadeLoop(Reverse As Integer)
+    Dim Frame As Long, Frames As Long
+    Dim FromFrame As Long, ToFrame As Long, StepFrame As Long
+
+    Frames = ScreenWidth / MapTileWidth
+
+    If Reverse Then
+        FromFrame = Frames - 1
+        ToFrame = 0
+        StepFrame = -1
+    Else
+        FromFrame = 0
+        ToFrame = Frames - 1
+        StepFrame = 1
+    End If
+
+    Dim OldScreenImage As Long
+    OldScreenImage = _CopyImage(ScreenImage)
+
+    For Frame = FromFrame To ToFrame Step StepFrame
+        _Dest ScreenImage
+        Cls
+
+        Dim X As Long, Y As Long, W As Long, H As Long
+        X = (Frame + 1) / Frames * ScreenWidth / 2
+        Y = X - (ScreenWidth - ScreenHeight) / 2
+        W = ScreenWidth - X * 2
+        H = W
+
+        _PutImage _
+            (X, Y)-(X + W - 1, Y + H - 1), _
+            OldScreenImage, ScreenImage, _
+            (X, Y)-(X + W - 1, Y + H - 1)
+
+        CopyScreen
+        _Display
+        _Limit FPS
+    Next
+
+    _FreeImage OldScreenImage
+End Sub
+
+Sub FadeOut
+    RenderGameScreen
+    FadeLoop False
+End Sub
+
+Sub FadeIn
+    RenderGameScreen
+    FadeLoop True
+End Sub

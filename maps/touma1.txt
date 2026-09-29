@@ -184,7 +184,7 @@ item
 end
 
 item
-    name BALL1
+    name BIKE_BALL
     images  1 
     position  6  8 
     talk 

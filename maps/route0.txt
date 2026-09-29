@@ -83,6 +83,11 @@ character
         short jump l
         short jump l
     end
+    catch
+        add item JIGGLYPUFF  1
+        remove
+        say Caught JIGGLYPUFF!``...PAFF!
+    end
 end
 
 character
@@ -114,6 +119,11 @@ character
         on touch appear
         on loop waiting
     end
+    catch
+        add item FARFETCH'D  1
+        remove
+        say Caught FARFETCH'D!
+    end
 end
 
 character
@@ -123,9 +133,6 @@ character
     images  2 
     facing d
     position  0  4 
-    loop waiting
-        wait 1
-    end
     touch appear1
         say ...NIDO!!
         unhide
@@ -148,7 +155,7 @@ character
         on touch appear4
     end
     touch appear4
-        say ...yes, it's still`a Nidoran.
+        say ...you're never`gonna catch this`NIDORAN.
         unhide
         short jump u
         hide

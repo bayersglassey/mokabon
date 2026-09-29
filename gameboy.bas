@@ -205,15 +205,16 @@ Const COMMAND_SAY = 5
 Const COMMAND_ON_LOOP = 6
 Const COMMAND_ON_TALK = 7
 Const COMMAND_ON_TOUCH = 8
-Const COMMAND_MAP = 9
-Const COMMAND_ADD_ITEM = 10
-Const COMMAND_REMOVE = 11
-Const COMMAND_IF_CHOOSE = 12
-Const COMMAND_IF_ITEM = 13
-Const COMMAND_ELSE = 14
-Const COMMAND_END = 15
-Const COMMAND_HIDE = 16
-Const COMMAND_UNHIDE = 17
+Const COMMAND_ON_CATCH = 9
+Const COMMAND_MAP = 10
+Const COMMAND_ADD_ITEM = 11
+Const COMMAND_REMOVE = 12
+Const COMMAND_IF_CHOOSE = 13
+Const COMMAND_IF_ITEM = 14
+Const COMMAND_ELSE = 15
+Const COMMAND_END = 16
+Const COMMAND_HIDE = 17
+Const COMMAND_UNHIDE = 18
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -227,7 +228,8 @@ End Type
 Const SCRIPT_LOOP = 0
 Const SCRIPT_TALK = 1
 Const SCRIPT_TOUCH = 2
-Const SCRIPT_INIT = 3
+Const SCRIPT_CATCH = 3
+Const SCRIPT_INIT = 4
 
 Type Script
     ScriptType As Integer ' SCRIPT_LOOP, etc
@@ -468,6 +470,7 @@ Type Character
     ' Indexes into the Scripts array
     TalkScriptNumber As Long
     TouchScriptNumber As Long
+    CatchScriptNumber As Long
 
     ' Starting values for other character fields, set when the map is loaded,
     ' and used when the map is saved.
@@ -514,6 +517,16 @@ Type Item
 End Type
 
 ReDim Shared Items(0) As Item
+
+Type Ball
+    X As Long
+    Y As Long
+    Facing As Long
+    Frame As Long
+    ShouldRemove As Integer
+End Type
+
+ReDim Shared Balls(0) As Ball
 
 
 ' ########################################################################
@@ -571,11 +584,17 @@ Do
         For I = 1 To UBound(Characters)
             RenderCharacter I
         Next
+        For I = 1 To UBound(Balls)
+            RenderBall I
+        Next
         If TalkingText <> "" Then RenderTalkingText
     ElseIf Mode = GAME_MODE And GameMenu > 0 Then
         RenderMap
         For I = 1 To UBound(Characters)
             RenderCharacter I
+        Next
+        For I = 1 To UBound(Balls)
+            RenderBall I
         Next
 
         RenderTextBox 10, 0, 9, 14
@@ -673,13 +692,22 @@ Do
                 End If
             End If
 
+            ' Handle gameboy's "B" button
+            If _
+                KeyPressed(ButtonBCode) And _
+                Characters(PLAYER).State = STATE_STANDING _
+            Then
+                ' TODO: decrement pokeballs
+                AddBall
+            End If
+
             ' Handle gameboy's "A" button
             If _
                 KeyPressed(ButtonACode) And _
                 Characters(PLAYER).State = STATE_STANDING _
             Then
-                NewX = PlayerX + FacingAddX(Characters(Player).Facing)
-                NewY = PlayerY + FacingAddY(Characters(Player).Facing)
+                NewX = PlayerX + FacingAddX(Characters(PLAYER).Facing)
+                NewY = PlayerY + FacingAddY(Characters(PLAYER).Facing)
                 I = CollideCharacters(NewX, NewY, PLAYER, True)
                 If I > 0 Then
                     If _
@@ -734,9 +762,23 @@ Do
             End If
         End If
 
+        ' Update all balls
+        I = 1
+        Do
+            If I > UBound(Balls) Then Exit Do
+            UpdateBall I
+            If Balls(I).ShouldRemove Then
+                RemoveBall I
+                I = I + 1
+            End If
+            I = I + 1
+        Loop
+
         ' Update all characters
         For I = 1 To UBound(Characters)
-            If Characters(I).LoopScriptStateNumber Then
+            If Characters(I).LoopScriptStateNumber _
+                And Characters(I).State <> STATE_GONE _
+            Then
                 UpdateScriptState Characters(I).LoopScriptStateNumber
             End If
             HandleCharacterAnimation I
@@ -748,6 +790,11 @@ Do
         ' Render all characters
         For I = 1 To UBound(Characters)
             RenderCharacter I
+        Next
+
+        ' Render all balls
+        For I = 1 To UBound(Balls)
+            RenderBall I
         Next
     ElseIf Mode = MAP_EDITOR_MODE Then
         ' Move the player with the arrow keys; in map editor mode, the
@@ -1516,17 +1563,17 @@ Sub LoadLinkedMap(Facing As Long)
     If WasRidingBike Then RideBike PLAYER
     Characters(PLAYER).Facing = Facing
     If Facing = FACING_UP Then
-        Characters(Player).X = GetFirstNonSolidTileX(MapHeight - 1) + Offset
-        Characters(Player).Y = MapHeight - 1
+        Characters(PLAYER).X = GetFirstNonSolidTileX(MapHeight - 1) + Offset
+        Characters(PLAYER).Y = MapHeight - 1
     ElseIf Facing = FACING_RIGHT Then
-        Characters(Player).X = 0
-        Characters(Player).Y = GetFirstNonSolidTileY(0) + Offset
+        Characters(PLAYER).X = 0
+        Characters(PLAYER).Y = GetFirstNonSolidTileY(0) + Offset
     ElseIf Facing = FACING_DOWN Then
-        Characters(Player).X = GetFirstNonSolidTileX(0) + Offset
-        Characters(Player).Y = 0
+        Characters(PLAYER).X = GetFirstNonSolidTileX(0) + Offset
+        Characters(PLAYER).Y = 0
     ElseIf Facing = FACING_LEFT Then
-        Characters(Player).X = MapWidth - 1
-        Characters(Player).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
+        Characters(PLAYER).X = MapWidth - 1
+        Characters(PLAYER).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
     End If
 
     FadeIn
@@ -1557,6 +1604,7 @@ Sub InitializeCharacter(I As Long)
     Characters(I).ScriptsLength = 0
     Characters(I).TalkScriptNumber = 0
     Characters(I).TouchScriptNumber = 0
+    Characters(I).CatchScriptNumber = 0
     Characters(I).LoopScriptStateNumber = 0
     SetCharacterStartFields I
 End Sub
@@ -1624,6 +1672,10 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
             NextToken
             ScriptName = Token
             ParseScript File, I, SCRIPT_TOUCH, ScriptName
+        ElseIf Token = "catch" Then
+            NextToken
+            ScriptName = Token
+            ParseScript File, I, SCRIPT_CATCH, ScriptName
         ElseIf Token = "init" Then
             If GotInit Then Die "Duplicate init scripts"
             GotInit = True
@@ -1682,8 +1734,10 @@ Function CanMoveTo( _
     NewSolidity = MapSolidityAt(NewX, NewY)
     CanMoveTo = 0
     If Solidity = JUMP_UP And MoveDirection = FACING_UP Then
-        If CollideCharacters(NewX, NewY, IgnoreCharacter, False) = 0 _
-            Then CanMoveTo = 3 ' Can short jump there
+        If _
+            (NewSolidity = NOT_SOLID Or NewSolidity = JUMP_UP) And _
+            CollideCharacters(NewX, NewY, IgnoreCharacter, False) = 0 _
+                Then CanMoveTo = 3 ' Can short jump there
     ElseIf _
         NewSolidity = NOT_SOLID Or _
         (NewSolidity = JUMP_UP And MoveDirection <> FACING_DOWN) _
@@ -2088,6 +2142,7 @@ Sub ResetCharacterScripts(I As Long)
     LoopScriptNumber = 0
     Characters(I).TalkScriptNumber = 0
     Characters(I).TouchScriptNumber = 0
+    Characters(I).CatchScriptNumber = 0
     For J = ScriptsStart To ScriptsStart + Characters(I).ScriptsLength - 1
         Script = Scripts(J)
         ScriptType = Script.ScriptType
@@ -2097,6 +2152,8 @@ Sub ResetCharacterScripts(I As Long)
             Then Characters(I).TalkScriptNumber = J
         If ScriptType = SCRIPT_TOUCH And Characters(I).TouchScriptNumber = 0 _
             Then Characters(I).TouchScriptNumber = J
+        If ScriptType = SCRIPT_CATCH And Characters(I).CatchScriptNumber = 0 _
+            Then Characters(I).CatchScriptNumber = J
     Next
 
     If LoopScriptNumber Then
@@ -2258,9 +2315,7 @@ Sub RenderCharacter(I As Long)
         If Character.State = STATE_JUMPING Then Multiplier = 2
 
         ' Character's sprite moves up and down as they jump
-        Dim Frame As Long
-        Frame = Character.Frame
-        Y = Y - (5 * Multiplier - Abs(Frame - 4 * Multiplier))
+        Y = Y - (5 * Multiplier - Abs(Character.Frame - 4 * Multiplier))
     End If
 
     ' Pokemon and items use different character tilesets
@@ -2369,6 +2424,10 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
                 I = AddScriptCommand(COMMAND_ON_TOUCH)
                 NextToken
                 ScriptCommands(I).Str1 = Token
+            ElseIf Token = "catch" Then
+                I = AddScriptCommand(COMMAND_ON_CATCH)
+                NextToken
+                ScriptCommands(I).Str1 = Token
             Else
                 ParseDie Text
             End If
@@ -2463,6 +2522,8 @@ Function ScriptTypeStr$(ScriptType As Long)
         ScriptTypeStr$ = "talk"
     ElseIf ScriptType = SCRIPT_TOUCH Then
         ScriptTypeStr$ = "touch"
+    ElseIf ScriptType = SCRIPT_CATCH Then
+        ScriptTypeStr$ = "catch"
     ElseIf ScriptType = SCRIPT_INIT Then
         ScriptTypeStr$ = "init"
     Else
@@ -2498,6 +2559,8 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        on talk "; Command.Str1
         ElseIf Command.CommandType = COMMAND_ON_TOUCH Then
             Print #File, "        on touch "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_ON_CATCH Then
+            Print #File, "        on catch "; Command.Str1
         ElseIf Command.CommandType = COMMAND_MAP Then
             Print #File, "        map "; Command.Str1; " "; Command.Str2
         ElseIf Command.CommandType = COMMAND_ADD_ITEM Then
@@ -2669,6 +2732,10 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_ON_TOUCH Then
             Characters(Script.CharacterNumber).TouchScriptNumber = _
+                FindScriptNumber(Script.CharacterNumber, Command.Str1)
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_ON_CATCH Then
+            Characters(Script.CharacterNumber).CatchScriptNumber = _
                 FindScriptNumber(Script.CharacterNumber, Command.Str1)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_MAP Then
@@ -3097,6 +3164,12 @@ Sub SerializeCharacter(Character As Character)
     Else
         SerializeNull
     End If
+    SerializeField "catchScript"
+    If Character.CatchScriptNumber > 0 Then
+        SerializeScript Scripts(Character.CatchScriptNumber)
+    Else
+        SerializeNull
+    End If
     SerializeClose
 End Sub
 
@@ -3124,6 +3197,9 @@ Sub RenderGameScreen
     RenderMap
     For I = 1 To UBound(Characters)
         RenderCharacter I
+    Next
+    For I = 1 To UBound(Balls)
+        RenderBall I
     Next
 End Sub
 
@@ -3177,4 +3253,109 @@ End Sub
 Sub FadeIn
     RenderGameScreen
     FadeLoop True
+End Sub
+
+Sub AddBall
+    Dim I As Long
+    I = UBound(Balls) + 1
+    ReDim _Preserve Balls(I) As Ball
+    Balls(I).X = PlayerX
+    Balls(I).Y = PlayerY
+    Balls(I).Facing = Characters(PLAYER).Facing
+    Balls(I).Frame = 0
+End Sub
+
+Sub RemoveBall(I As Long)
+    Dim J As Long
+    For J = I To UBound(Balls) - 1
+        Balls(J) = Balls(J + 1)
+    Next
+    ReDim _Preserve Balls(UBound(Balls) - 1) As Ball
+End Sub
+
+Function GetBallDistance(Frame As Long)
+    GetBallDistance = 3 + Frame * 4
+End Function
+
+Sub UpdateBall(I As Long)
+    Dim Ball As Ball
+    Ball = Balls(I)
+
+    If Ball.Frame >= 11 Then
+        Balls(I).ShouldRemove = True
+        Exit Sub
+    End If
+
+    Dim Distance As Long
+    Dim ExtraX As Long, ExtraY As Long
+    Distance = GetBallDistance(Ball.Frame)
+    ExtraX = FacingAddX(Ball.Facing) * Distance
+    ExtraY = FacingAddY(Ball.Facing) * Distance
+
+    Dim X As Long, Y As Long, J As Long
+    X = Ball.X + ExtraX / MapTileWidth
+    Y = Ball.Y + ExtraY / MapTileHeight
+
+    ' See if we collided with any characters
+    J = CollideCharacters(X, Y, PLAYER, False)
+    If J > 0 Then
+        If Characters(J).CatchScriptNumber > 0 Then
+            Talking = True
+            SetScriptState TALKING_SCRIPT_STATE, _
+                Characters(J).CatchScriptNumber
+        End If
+        Balls(I).ShouldRemove = True
+        Exit Sub
+    End If
+
+    Dim OldDistance As Long
+    Dim OldX As Long, OldY As Long
+    OldDistance = GetBallDistance(Ball.Frame - 1)
+    OldX = Ball.X + FacingAddX(Ball.Facing) * OldDistance / MapTileWidth
+    OldY = Ball.Y + FacingAddY(Ball.Facing) * OldDistance / MapTileHeight
+
+    ' See if we've hit any solid map tiles
+    Dim CanMove As Integer
+    CanMove = CanMoveTo(OldX, OldY, X, Y, Ball.Facing, PLAYER)
+    If CanMove = 0 Then
+        Balls(I).ShouldRemove = True
+        Exit Sub
+    End If
+
+    Balls(I).Frame = Balls(I).Frame + 1
+End Sub
+
+Sub RenderBall(I As Long)
+    ' Draw the ball Balls(I) onto the game boy's screen
+
+    Dim Ball As Ball
+    Ball = Balls(I)
+
+    Dim Distance As Long
+    Dim ExtraX As Long, ExtraY As Long
+    Distance = GetBallDistance(Ball.Frame)
+    ExtraX = FacingAddX(Ball.Facing) * Distance
+    ExtraY = FacingAddY(Ball.Facing) * Distance
+
+    _Dest ScreenImage
+
+    ' The location in pixels to render the ball at
+    Dim X As Long
+    Dim Y As Long
+
+    ' The location in pixels of the top-left corner of the map on the
+    ' game boy's screen
+    X = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
+    Y = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+
+    ' Render the ball's shadow
+    RenderTile MiscCharacterTileset, 9, 0, Ball.X, Ball.Y, _
+        X + ExtraX, Y + ExtraY
+
+    ' Ball's sprite moves up and down as it flies
+    Y = Y - (8 - Abs(Ball.Frame - 7))
+
+    ' Actually render the ball onto the game boy's screen
+    RenderTile MiscCharacterTileset, 1, 0, Ball.X, Ball.Y, _
+        X + ExtraX, Y + ExtraY
 End Sub

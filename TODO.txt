@@ -160,6 +160,9 @@
         Or do we want to have "init" scripts?.. that's probably nicer?..
         Or maybe we do both, because picking up items is a common case,
         and it's nice if it's easy to achieve...
+[ ] Add pokeballs
+    [X] You can throw them, and catch things!
+    [ ] You need to have them in your inventory, and they get used up.
 [ ] Add money
 
 
@@ -200,8 +203,14 @@
 [X] When you come out of *any* door (i.e. COMMAND_MAP), you should walk
     forward a step.
 [X] Add screen transitions!
+[X] Fix JUMP_UP letting you jump onto solid stuff!
+[ ] Split HandleCharacterAnimation into something which updates ExtraX,
+    ExtraY, etc, and something which updates Frame, etc.
+    The former should be used to update character's sprite for rendering,
+    e.g. after we modify their Facing.
+[ ] Don't let characters walk onto each other via loop scripts
 [ ] Remember which characters have STATE_GONE between map changes.
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
-[ ] JUMP_UP lets you jump onto solid stuff!
 [ ] Implement SCRIPT_INIT (it exists, but currently does nothing)
+[ ] The ITEMS menu needs to scroll.

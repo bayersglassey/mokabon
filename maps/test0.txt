@@ -57,6 +57,9 @@ character
         face d
         on talk hello
     end
+    catch
+        say Caught JIMBERT!``...just kidding.
+    end
 end
 
 character
@@ -78,6 +81,11 @@ character
     talk 
         say SQUAWK!
     end
+    catch
+        add item PIDGEY  1 
+        remove 
+        say Caught PIDGEY!
+    end
 end
 
 character
@@ -98,6 +106,9 @@ character
     end
     talk 
         say PIKA PIKA!
+    end
+    catch
+        say Bonk!`It's not very`effective...
     end
 end
 
@@ -191,7 +202,7 @@ item
 end
 
 item
-    name BALL1
+    name BIKE_BALL
     images  1 
     position  7  9 
     talk 
@@ -210,6 +221,11 @@ character
     talk 
         say CH-CH-CHTT!
     end
+    catch
+        add item RATTATA  1 
+        remove 
+        say Caught RATTATA!
+    end
 end
 
 character
@@ -220,6 +236,11 @@ character
     position  22  1 
     talk 
         say SQUEAK!
+    end
+    catch
+        add item RATTATA  1 
+        remove 
+        say Caught RATTATA!
     end
 end
 

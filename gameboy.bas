@@ -2314,7 +2314,6 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
     Dim Script As Script
     Dim Text As String
     Dim Depth As Long ' For parsing if...else...end
-    Dim FirstOnLoopCommand As Long
     Start = UBound(ScriptCommands) + 1
     Do
         Line Input #File, Text
@@ -2361,7 +2360,6 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
                 NextToken
                 If Token = "" Then Die _
                     "Can't use 'on loop' without a script name!"
-                If FirstOnLoopCommand = 0 Then FirstOnLoopCommand = I
                 ScriptCommands(I).Str1 = Token
             ElseIf Token = "talk" Then
                 I = AddScriptCommand(COMMAND_ON_TALK)
@@ -2452,9 +2450,6 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
     Script.Length = UBound(ScriptCommands) - (Start - 1)
 
     If Script.Length = 0 Then Die "Can't have a script with no commands!"
-    If ScriptType = SCRIPT_LOOP And FirstOnLoopCommand > 0 _
-        And FirstOnLoopCommand < UBound(ScriptCommands) Then Die _
-        "In a loop script, 'on loop' can only appear as the final command!"
 
     ' Append the new script to the end of the Scripts array
     ReDim _Preserve Scripts(UBound(Scripts) + 1) As Script

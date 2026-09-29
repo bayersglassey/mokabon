@@ -528,6 +528,16 @@ End Type
 
 ReDim Shared Balls(0) As Ball
 
+Type CharacterInfo
+    ' Information about a character which is preserved even when you
+    ' go to a different map.
+    MapFilename As String
+    CharacterName As String
+    IsGone As Integer
+End Type
+
+ReDim Shared CharacterInfo(0) As CharacterInfo
+
 
 ' ########################################################################
 ' # THAT'S THE END OF ALL THE DECLARATIONS!
@@ -1069,7 +1079,7 @@ Sub ScrollMap(AddX As Long, AddY As Long)
         Next
     Next
 
-    For I = 2 To UBound(Characters)
+    For I = PLAYER + 1 To UBound(Characters)
         Characters(I).X = Wrap(Characters(I).X + AddX, MapWidth)
         Characters(I).Y = Wrap(Characters(I).Y + AddY, MapHeight)
         Characters(I).StartX = Wrap(Characters(I).StartX + AddX, MapWidth)
@@ -1434,7 +1444,7 @@ End Function
 Sub LoadMap(Filename As String)
     Dim File As Long
     Dim Text As String
-    Dim I As Long, X As Long, Y As Long
+    Dim I As Long, J As Long, X As Long, Y As Long
 
     LineNumber = 0
     MapTilesetNumber = 0
@@ -1513,6 +1523,17 @@ Sub LoadMap(Filename As String)
 
     SetCharacterStartFields PLAYER
 
+    ' Load character info for the new map
+    For I = 1 To UBound(CharacterInfo)
+        If CharacterInfo(I).MapFilename <> MapFilename Then _Continue
+        J = FindCharacter(CharacterInfo(I).CharacterName, False)
+        ' NOTE: if the character doesn't exist, that's okay.
+        ' This allows us to edit a map, removing a character, and then
+        ' reload the map in the editor, without the game breaking...
+        If J = 0 Then _Continue
+        If CharacterInfo(I).IsGone Then Characters(J).State = STATE_GONE
+    Next
+
     LoadMapTiles
     RenderMapImage
 End Sub
@@ -1556,6 +1577,7 @@ Sub LoadLinkedMap(Facing As Long)
     FadeOut
 
     ' Load the new map
+    SaveAllCharacterInfo
     MapFilename = MapLinkFilenames(Facing)
     LoadMap MapFilename
 
@@ -1976,6 +1998,7 @@ Sub HandleModeSwitching
         ShowMessage "Map saved!"
     End If
     If KeyPressed(F7Code) Then
+        SaveAllCharacterInfo
         LoadMap MapFilename
         ShowMessage "Map loaded!"
     End If
@@ -2739,6 +2762,7 @@ Sub UpdateScriptState(StateNumber As Long)
                 FindScriptNumber(Script.CharacterNumber, Command.Str1)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_MAP Then
+            SaveAllCharacterInfo
             MapFilename = Command.Str1
             FixMapFilename MapFilename
 
@@ -2752,7 +2776,7 @@ Sub UpdateScriptState(StateNumber As Long)
 
             ' Locate the player at the (probably hidden) character indicated
             ' by the script
-            I = FindCharacter(Command.Str2)
+            I = FindCharacter(Command.Str2, True)
             Characters(PLAYER).X = Characters(I).X
             Characters(PLAYER).Y = Characters(I).Y
             Characters(PLAYER).Facing = Characters(I).Facing
@@ -2776,7 +2800,7 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_REMOVE Then
             If Command.Str1 <> "" Then
-                I = FindCharacter(Command.Str1)
+                I = FindCharacter(Command.Str1, True)
             Else
                 I = Script.CharacterNumber
             End If
@@ -2823,7 +2847,7 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_HIDE Then
             If Command.Str1 <> "" Then
-                I = FindCharacter(Command.Str1)
+                I = FindCharacter(Command.Str1, True)
             Else
                 I = Script.CharacterNumber
             End If
@@ -2831,7 +2855,7 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_UNHIDE Then
             If Command.Str1 <> "" Then
-                I = FindCharacter(Command.Str1)
+                I = FindCharacter(Command.Str1, True)
             Else
                 I = Script.CharacterNumber
             End If
@@ -2851,7 +2875,7 @@ Sub UpdateScriptState(StateNumber As Long)
         LoopScriptNumber
 End Sub
 
-Function FindCharacter(FindName As String)
+Function FindCharacter(FindName As String, Strict As Integer)
     Dim I As Long
     For I = 1 To UBound(Characters)
         If Characters(I).Name = FindName Then
@@ -2859,7 +2883,7 @@ Function FindCharacter(FindName As String)
             Exit Function
         End If
     Next
-    Die "Couldn't find character named: " + FindName
+    If Strict Then Die "Couldn't find character named: " + FindName
 End Function
 
 Sub RenderTextBox(TextBoxX As Long, TextBoxY As Long, _
@@ -3358,4 +3382,36 @@ Sub RenderBall(I As Long)
     ' Actually render the ball onto the game boy's screen
     RenderTile MiscCharacterTileset, 1, 0, Ball.X, Ball.Y, _
         X + ExtraX, Y + ExtraY
+End Sub
+
+Function FindCharacterInfo(MapFilename As String, CharacterName As String)
+    Dim I As Long
+    For I = 1 To UBound(CharacterInfo)
+        If CharacterInfo(I).MapFilename = MapFilename _
+            And CharacterInfo(I).CharacterName = CharacterName _
+        Then
+            FindCharacterInfo = I
+            Exit Function
+        End If
+    Next
+End Function
+
+Sub SaveCharacterInfo(MapFilename As String, CharacterName As String)
+    Dim I As Long, J As Long
+    I = FindCharacterInfo(MapFilename, CharacterName)
+    J = FindCharacter(CharacterName, True)
+    If I = 0 Then
+        I = UBound(CharacterInfo) + 1
+        ReDim _Preserve CharacterInfo(I) As CharacterInfo
+        CharacterInfo(I).MapFilename = MapFilename
+        CharacterInfo(I).CharacterName = CharacterName
+    End If
+    CharacterInfo(I).IsGone = Characters(J).State = STATE_GONE
+End Sub
+
+Sub SaveAllCharacterInfo
+    Dim I As Long
+    For I = PLAYER + 1 To UBound(Characters)
+        SaveCharacterInfo MapFilename, Characters(I).Name
+    Next
 End Sub

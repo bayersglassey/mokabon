@@ -189,14 +189,10 @@ item
     position  10  14 
     talk 
         say It's the`ULTRABALL.
-        if item ULTRABALL >  0 
-            say You've already got`one!
-        else
-            if choose No Yes Take it?
-                add item ULTRABALL  1 
-                remove 
-                say Got ULTRABALL.`Use it wisely...
-            end
+        if choose No Yes Take it?
+            add item ULTRABALL  1 
+            remove 
+            say Got ULTRABALL.`Use it wisely...
         end
     end
 end

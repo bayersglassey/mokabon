@@ -208,8 +208,8 @@
     ExtraY, etc, and something which updates Frame, etc.
     The former should be used to update character's sprite for rendering,
     e.g. after we modify their Facing.
+[X] Remember which characters have STATE_GONE between map changes.
 [ ] Don't let characters walk onto each other via loop scripts
-[ ] Remember which characters have STATE_GONE between map changes.
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] Implement SCRIPT_INIT (it exists, but currently does nothing)

@@ -2631,16 +2631,12 @@ Sub UpdateScriptState(StateNumber As Long)
             Characters(PLAYER).Y = Characters(I).Y
             Characters(PLAYER).Facing = Characters(I).Facing
 
-            ' If player has landed somewhere solid, they should walk forward.
-            ' This means e.g. when you exit from a "secret door", you walk
-            ' out of it onto a regular NOT_SOLID tile.
-            If MapSolidityAt(PlayerX, PlayerY) = SOLID Then
-                Characters(PLAYER).X = PlayerX + _
-                    FacingAddX(Characters(PLAYER).Facing)
-                Characters(PLAYER).Y = PlayerY + _
-                    FacingAddY(Characters(PLAYER).Facing)
-                Characters(PLAYER).State = STATE_WALKING
-            End If
+            ' Walk forward one step (presumably we are "exiting a door")
+            Characters(PLAYER).X = PlayerX + _
+                FacingAddX(Characters(PLAYER).Facing)
+            Characters(PLAYER).Y = PlayerY + _
+                FacingAddY(Characters(PLAYER).Facing)
+            Characters(PLAYER).State = STATE_WALKING
 
             ' Okay, we loaded a different map.
             ' Exit this subroutine/script, and restart the game's main loop!

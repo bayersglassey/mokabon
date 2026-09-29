@@ -197,6 +197,8 @@
 [X] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the
     back of the house.
+[X] When you come out of *any* door (i.e. COMMAND_MAP), you should walk
+    forward a step.
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] JUMP_UP lets you jump onto solid stuff!

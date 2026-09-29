@@ -31,7 +31,7 @@ character
     name DOOR2
     hidden
     images  0 
-    facing d
+    facing r
     position  0  8 
     touch
         map test0 DOOR2

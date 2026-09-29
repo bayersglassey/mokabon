@@ -36,8 +36,123 @@ item
     hidden
     images  0 
     position  4  9 
-    talk
+    talk 
         say Route 1
+        say Watch out for`Pokemon in tall`grass!
+    end
+end
+
+character
+    name JIGGLYPUFF
+    hidden
+    pokemon
+    images  1 
+    facing d
+    position  6  18 
+    loop waiting
+        wait 1
+    end
+    touch appear
+        say ...JIGGLY!!
+        unhide
+        on touch
+        on loop running
+    end
+    loop running
+        short jump u
+        short jump u
+        short jump u
+        short jump l
+        short jump l
+        short jump l
+        short jump d
+        short jump d
+        short jump d
+        short jump l
+        short jump l
+        short jump l
+        on loop roundabout
+    end
+    loop roundabout
+        short jump u
+        short jump u
+        short jump r
+        short jump r
+        short jump d
+        short jump d
+        short jump l
+        short jump l
+    end
+end
+
+character
+    name FARFETCH'D
+    hidden
+    pokemon
+    images  0 
+    facing d
+    position  6  10 
+    loop waiting
+        wait 1
+    end
+    touch appear
+        say ...FETCH'D!!
+        unhide
+        on touch
+        on loop running
+    end
+    loop running
+        jump l
+        jump l
+        short jump u
+        short jump u
+        jump r
+        jump r
+        short jump d
+        short jump d
+        hide
+        on touch appear
+        on loop waiting
+    end
+end
+
+character
+    name NIDORAN
+    hidden
+    pokemon
+    images  2 
+    facing d
+    position  0  4 
+    loop waiting
+        wait 1
+    end
+    touch appear1
+        say ...NIDO!!
+        unhide
+        short jump r
+        hide
+        on touch appear2
+    end
+    touch appear2
+        say ...RAN!!
+        unhide
+        short jump d
+        hide
+        on touch appear3
+    end
+    touch appear3
+        say ...NIDORAN!!
+        unhide
+        short jump l
+        hide
+        on touch appear4
+    end
+    touch appear4
+        say ...yes, it's still`a Nidoran.
+        unhide
+        short jump u
+        hide
+        on touch appear1
     end
 end
 

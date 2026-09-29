@@ -200,6 +200,8 @@
 [X] When you come out of *any* door (i.e. COMMAND_MAP), you should walk
     forward a step.
 [X] Add screen transitions!
+[ ] Remember which characters have STATE_GONE between map changes.
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] JUMP_UP lets you jump onto solid stuff!
+[ ] Implement SCRIPT_INIT (it exists, but currently does nothing)

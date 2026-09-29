@@ -202,15 +202,18 @@ Const COMMAND_JUMP = 2
 Const COMMAND_SHORT_JUMP = 3
 Const COMMAND_FACE = 4
 Const COMMAND_SAY = 5
-Const COMMAND_ON_TALK = 6
-Const COMMAND_ON_TOUCH = 7
-Const COMMAND_MAP = 8
-Const COMMAND_ADD_ITEM = 9
-Const COMMAND_REMOVE = 10
-Const COMMAND_IF_CHOOSE = 11
-Const COMMAND_IF_ITEM = 12
-Const COMMAND_ELSE = 13
-Const COMMAND_END = 14
+Const COMMAND_ON_LOOP = 6
+Const COMMAND_ON_TALK = 7
+Const COMMAND_ON_TOUCH = 8
+Const COMMAND_MAP = 9
+Const COMMAND_ADD_ITEM = 10
+Const COMMAND_REMOVE = 11
+Const COMMAND_IF_CHOOSE = 12
+Const COMMAND_IF_ITEM = 13
+Const COMMAND_ELSE = 14
+Const COMMAND_END = 15
+Const COMMAND_HIDE = 16
+Const COMMAND_UNHIDE = 17
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -224,6 +227,7 @@ End Type
 Const SCRIPT_LOOP = 0
 Const SCRIPT_TALK = 1
 Const SCRIPT_TOUCH = 2
+Const SCRIPT_INIT = 3
 
 Type Script
     ScriptType As Integer ' SCRIPT_LOOP, etc
@@ -455,7 +459,7 @@ Type Character
     OtherFoot As Integer
 
     ' Index into ScriptStates, or 0
-    ScriptStateNumber As Long
+    LoopScriptStateNumber As Long
 
     ' The range of members of Scripts which belong to this character
     ScriptsStart As Long
@@ -655,7 +659,7 @@ Do
                         ' Restart the main loop
                         _Continue
                     End If
-                ElseIf MapSolidityAt(NewX, NewY) = SOLID Then
+                Else
                     ' If we've touched another character with a "touch
                     ' script", run that script
                     I = CollideCharacters(NewX, NewY, PLAYER, True)
@@ -732,8 +736,8 @@ Do
 
         ' Update all characters
         For I = 1 To UBound(Characters)
-            If Characters(I).ScriptStateNumber Then
-                UpdateScriptState Characters(I).ScriptStateNumber
+            If Characters(I).LoopScriptStateNumber Then
+                UpdateScriptState Characters(I).LoopScriptStateNumber
             End If
             HandleCharacterAnimation I
         Next
@@ -1407,7 +1411,7 @@ Sub LoadMap(Filename As String)
         Line Input #File, Text
         Parse Text
         LineNumber = LineNumber + 1
-        If Text = "" Or Left$(Text, 1) = "#" Then
+        If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "tileset" Then
             NextToken
@@ -1553,7 +1557,7 @@ Sub InitializeCharacter(I As Long)
     Characters(I).ScriptsLength = 0
     Characters(I).TalkScriptNumber = 0
     Characters(I).TouchScriptNumber = 0
-    Characters(I).ScriptStateNumber = 0
+    Characters(I).LoopScriptStateNumber = 0
     SetCharacterStartFields I
 End Sub
 
@@ -1571,6 +1575,7 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
     Dim I As Long
     Dim Text As String
     Dim ScriptName As String
+    Dim GotInit As Integer
     I = UBound(Characters) + 1
     ReDim _Preserve Characters(I) As Character
     InitializeCharacter I
@@ -1581,7 +1586,7 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
         Line Input #File, Text
         Parse Text
         LineNumber = LineNumber + 1
-        If Text = "" Or Left$(Text, 1) = "#" Then
+        If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "name" Then
             NextToken
@@ -1619,6 +1624,10 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
             NextToken
             ScriptName = Token
             ParseScript File, I, SCRIPT_TOUCH, ScriptName
+        ElseIf Token = "init" Then
+            If GotInit Then Die "Duplicate init scripts"
+            GotInit = True
+            ParseScript File, I, SCRIPT_INIT, ScriptName
         ElseIf Token = "end" Then
             Exit Do
         End If
@@ -2091,13 +2100,13 @@ Sub ResetCharacterScripts(I As Long)
     Next
 
     If LoopScriptNumber Then
-        If Characters(I).ScriptStateNumber = 0 Then
+        If Characters(I).LoopScriptStateNumber = 0 Then
             ReDim _Preserve ScriptStates(UBound(ScriptStates) + 1) _
                 As ScriptState
-            Characters(I).ScriptStateNumber = UBound(ScriptStates)
+            Characters(I).LoopScriptStateNumber = UBound(ScriptStates)
         End If
-        SetScriptState Characters(I).ScriptStateNumber, LoopScriptNumber
-    ElseIf Characters(I).ScriptStateNumber Then
+        SetScriptState Characters(I).LoopScriptStateNumber, LoopScriptNumber
+    ElseIf Characters(I).LoopScriptStateNumber Then
         ' This should never happen!
         Die "Character " + Str$(I) + "(" + Characters(I).Name + "): " + _
             "have a script state, but no loop scripts!"
@@ -2305,12 +2314,13 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
     Dim Script As Script
     Dim Text As String
     Dim Depth As Long ' For parsing if...else...end
+    Dim FirstOnLoopCommand As Long
     Start = UBound(ScriptCommands) + 1
     Do
         Line Input #File, Text
         Parse Text
         LineNumber = LineNumber + 1
-        If Text = "" Or Left$(Text, 1) = "#" Then
+        If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "wait" Then
             I = AddScriptCommand(COMMAND_WAIT)
@@ -2346,7 +2356,14 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
             ScriptCommands(I).Str1 = ParseText
         ElseIf Token = "on" Then
             NextToken
-            If Token = "talk" Then
+            If Token = "loop" Then
+                I = AddScriptCommand(COMMAND_ON_LOOP)
+                NextToken
+                If Token = "" Then Die _
+                    "Can't use 'on loop' without a script name!"
+                If FirstOnLoopCommand = 0 Then FirstOnLoopCommand = I
+                ScriptCommands(I).Str1 = Token
+            ElseIf Token = "talk" Then
                 I = AddScriptCommand(COMMAND_ON_TALK)
                 NextToken
                 ScriptCommands(I).Str1 = Token
@@ -2414,6 +2431,14 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
             Else
                 Exit Do
             End If
+        ElseIf Token = "hide" Then
+            I = AddScriptCommand(COMMAND_HIDE)
+            NextToken
+            ScriptCommands(I).Str1 = Token
+        ElseIf Token = "unhide" Then
+            I = AddScriptCommand(COMMAND_UNHIDE)
+            NextToken
+            ScriptCommands(I).Str1 = Token
         Else
             ParseDie Text
         End If
@@ -2425,6 +2450,11 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
     Script.CharacterNumber = CharacterNumber
     Script.Start = Start
     Script.Length = UBound(ScriptCommands) - (Start - 1)
+
+    If Script.Length = 0 Then Die "Can't have a script with no commands!"
+    If ScriptType = SCRIPT_LOOP And FirstOnLoopCommand > 0 _
+        And FirstOnLoopCommand < UBound(ScriptCommands) Then Die _
+        "In a loop script, 'on loop' can only appear as the final command!"
 
     ' Append the new script to the end of the Scripts array
     ReDim _Preserve Scripts(UBound(Scripts) + 1) As Script
@@ -2438,6 +2468,8 @@ Function ScriptTypeStr$(ScriptType As Long)
         ScriptTypeStr$ = "talk"
     ElseIf ScriptType = SCRIPT_TOUCH Then
         ScriptTypeStr$ = "touch"
+    ElseIf ScriptType = SCRIPT_INIT Then
+        ScriptTypeStr$ = "init"
     Else
         Die "Unknown script type: " + Str$(ScriptType)
     End If
@@ -2465,6 +2497,8 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        face "; FacingStr$(Command.Num1)
         ElseIf Command.CommandType = COMMAND_SAY Then
             Print #File, "        say "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_ON_LOOP Then
+            Print #File, "        on loop "; Command.Str1
         ElseIf Command.CommandType = COMMAND_ON_TALK Then
             Print #File, "        on talk "; Command.Str1
         ElseIf Command.CommandType = COMMAND_ON_TOUCH Then
@@ -2488,6 +2522,10 @@ Sub WriteScript(File As Long, Script As Script)
         ElseIf Command.CommandType = COMMAND_END Then
             Print #File, "    end"
             Depth = Depth - 1
+        ElseIf Command.CommandType = COMMAND_HIDE Then
+            Print #File, "        hide "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_UNHIDE Then
+            Print #File, "        unhide "; Command.Str1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2530,6 +2568,7 @@ Sub UpdateScriptState(StateNumber As Long)
     Dim Script As Script
     Dim State As ScriptState
     Dim Command As ScriptCommand
+    Dim LoopScriptNumber As Long
     State = ScriptStates(StateNumber)
     Script = Scripts(State.ScriptNumber)
 
@@ -2610,6 +2649,25 @@ Sub UpdateScriptState(StateNumber As Long)
                 State.Frame = State.Frame + 1
                 Exit Do
             End If
+        ElseIf Command.CommandType = COMMAND_ON_LOOP Then
+            ' NOTE: we don't update character's loop script here, because
+            ' it might be the same script which is currently running!..
+            ' So we just set LoopScriptNumber here, and then call
+            ' SetScriptState with it at the bottom of this subroutine.
+            LoopScriptNumber = FindScriptNumber(Script.CharacterNumber, _
+                Command.Str1)
+            ' NOTE: the following check should never fail, because we should
+            ' force COMMAND_ON_LOOP to have a nonempty Command.Str1 during
+            ' parsing.
+            If LoopScriptNumber = 0 Then Die "Attempted to unset " + _
+                Characters(Script.CharacterNumber).Name + _
+                "'s loop script!.. " + _
+                "use an explicitly empty loop script instead."
+            ' If we're currently in the character's loop script, stop
+            ' executing it, since we're now changing it!
+            If Characters(Script.CharacterNumber).LoopScriptStateNumber = _
+                StateNumber Then Exit Do
+            State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_ON_TALK Then
             Characters(Script.CharacterNumber).TalkScriptNumber = _
                 FindScriptNumber(Script.CharacterNumber, Command.Str1)
@@ -2656,10 +2714,11 @@ Sub UpdateScriptState(StateNumber As Long)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_REMOVE Then
             If Command.Str1 <> "" Then
-                RemoveCharacter FindCharacter(Command.Str1)
+                I = FindCharacter(Command.Str1)
             Else
-                RemoveCharacter Script.CharacterNumber
+                I = Script.CharacterNumber
             End If
+            RemoveCharacter I
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
             If State.Frame = 1 Then
@@ -2700,6 +2759,22 @@ Sub UpdateScriptState(StateNumber As Long)
             ' We've reached the "end" if an "if" block... it has no effect,
             ' so just skip over it
             State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_HIDE Then
+            If Command.Str1 <> "" Then
+                I = FindCharacter(Command.Str1)
+            Else
+                I = Script.CharacterNumber
+            End If
+            Characters(I).IsHidden = True
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_UNHIDE Then
+            If Command.Str1 <> "" Then
+                I = FindCharacter(Command.Str1)
+            Else
+                I = Script.CharacterNumber
+            End If
+            Characters(I).IsHidden = False
+            State.CommandNumber = State.CommandNumber + 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2707,6 +2782,11 @@ Sub UpdateScriptState(StateNumber As Long)
 
     ' Copy any state updates we've made back into the array of states
     ScriptStates(StateNumber) = State
+
+    ' Maybe update character's loop script
+    If LoopScriptNumber > 0 Then SetScriptState _
+        Characters(Script.CharacterNumber).LoopScriptStateNumber, _
+        LoopScriptNumber
 End Sub
 
 Function FindCharacter(FindName As String)
@@ -3005,8 +3085,8 @@ Sub SerializeCharacter(Character As Character)
     SerializeField "frame"
     SerializeNumber Character.Frame
     SerializeField "scriptState"
-    If Character.ScriptStateNumber > 0 Then
-        SerializeScriptState ScriptStates(Character.ScriptStateNumber)
+    If Character.LoopScriptStateNumber > 0 Then
+        SerializeScriptState ScriptStates(Character.LoopScriptStateNumber)
     Else
         SerializeNull
     End If

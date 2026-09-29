@@ -13,6 +13,11 @@ tiles  7   11
 15 D D D D D 11
 F F F F F F F
 
+link u 
+link r 
+link d 
+link l 
+
 facing d
 position  3  0 
 
@@ -22,7 +27,7 @@ character
     images  0 
     facing d
     position  3  0 
-    touch
+    touch 
         map test0 DOOR1
     end
 end
@@ -33,8 +38,129 @@ character
     images  0 
     facing r
     position  0  8 
-    touch
+    touch 
         map test0 DOOR2
+    end
+end
+
+character
+    name CLEFAIRY1
+    pokemon
+    images  1 
+    facing d
+    position  3  4 
+    talk
+        say ...CLEF CLEF!
+    end
+    catch a
+        jump r
+        jump d
+        on catch b
+    end
+    catch b
+        jump d
+        jump l
+        on catch c
+    end
+    catch c
+        jump l
+        jump u
+        on catch d
+    end
+    catch d
+        jump u
+        jump r
+        remove
+        unhide CLEFAIRY2
+        unhide CLEFAIRY3
+        unhide CLEFAIRY4
+        unhide CLEFAIRY5
+        say CLEFAIRY split`into four!..
+        on catch
+    end
+end
+
+character
+    name CLEFAIRY2
+    pokemon
+    hidden
+    images  1 
+    facing d
+    position  2  1 
+    talk
+        say 'Sup.
+    end
+    catch
+        add item CLEFAIRY  1
+        remove
+        hide CLEFAIRY2
+        hide CLEFAIRY3
+        hide CLEFAIRY4
+        hide CLEFAIRY5
+        say Caught CLEFAIRY!`...the others`disappeared.
+    end
+end
+
+character
+    name CLEFAIRY3
+    pokemon
+    hidden
+    images  1 
+    facing d
+    position  4  1 
+    talk
+        say Ay.
+    end
+    catch
+        add item CLEFAIRY  1
+        remove
+        hide CLEFAIRY2
+        hide CLEFAIRY3
+        hide CLEFAIRY4
+        hide CLEFAIRY5
+        say Caught CLEFAIRY!`...the others`disappeared.
+    end
+end
+
+character
+    name CLEFAIRY4
+    pokemon
+    hidden
+    images  1 
+    facing r
+    position  1  7 
+    talk
+        say Yo.
+    end
+    catch
+        add item CLEFAIRY  1
+        remove
+        hide CLEFAIRY2
+        hide CLEFAIRY3
+        hide CLEFAIRY4
+        hide CLEFAIRY5
+        say Caught CLEFAIRY!`...the others`disappeared.
+    end
+end
+
+character
+    name CLEFAIRY5
+    pokemon
+    hidden
+    images  1 
+    facing r
+    position  1  9 
+    talk
+        say (cough)
+    end
+    catch
+        add item CLEFAIRY  1
+        remove
+        hide CLEFAIRY2
+        hide CLEFAIRY3
+        hide CLEFAIRY4
+        hide CLEFAIRY5
+        say Caught CLEFAIRY!`...the others`disappeared.
     end
 end
 

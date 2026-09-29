@@ -254,9 +254,9 @@ solid
 48 49
 58 59
 
-# house roof middle secret
-07 07
-17 17
+# UNUSED
+00 00
+00 00
 
 # mountain plateau, solid
 solid

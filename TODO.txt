@@ -194,9 +194,12 @@
 [X] In MAP_SCROLL_MODE, characters should also be "scrolled" (X, Y,
     StartX, and StartY).
 [X] Add subroutines for serializing data structures (for debugging)
-[ ] Arrow keys should all prevent each other from repeated keypresses?..
-[ ] Map editor: add ability to copy rectangular areas of the map around
-[ ] Currently, you run "onto the roof" at the back of a house...
+[X] Currently, you run "onto the roof" at the back of a house...
     instead, script should be triggered when you "press against" the
     back of the house.
+[ ] Arrow keys should all prevent each other from repeated keypresses?..
+[ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] JUMP_UP lets you jump onto solid stuff!
+[ ] Add screen transitions!
+    Experiment with a bunch of them... alpha-based, fading w/ patterns
+    of pure black pixels, tile-based wipes, etc.

@@ -633,14 +633,7 @@ Do
                 Dim CanMove As Integer
                 CanMove = CanMoveTo(PlayerX, PlayerY, NewX, NewY, _
                     MoveDirection, PLAYER)
-                If Not WithinMap(NewX, NewY) Then
-                    ' Maybe walk off the edge of the map
-                    If MapLinkFilenames(MoveDirection) <> "" Then
-                        LoadLinkedMap MoveDirection
-                        ' Restart the main loop
-                        _Continue
-                    End If
-                ElseIf CanMove = 1 Then
+                If CanMove = 1 Then
                     ' We are ok to walk to the new map position
                     Characters(PLAYER).X = NewX
                     Characters(PLAYER).Y = NewY
@@ -655,6 +648,24 @@ Do
                     Characters(PLAYER).X = NewX
                     Characters(PLAYER).Y = NewY
                     Characters(PLAYER).State = STATE_SHORT_JUMPING
+                ElseIf Not WithinMap(NewX, NewY) Then
+                    ' Maybe walk off the edge of the map
+                    If MapLinkFilenames(MoveDirection) <> "" Then
+                        LoadLinkedMap MoveDirection
+                        ' Restart the main loop
+                        _Continue
+                    End If
+                ElseIf MapSolidityAt(NewX, NewY) = SOLID Then
+                    ' If we've touched another character with a "touch
+                    ' script", run that script
+                    I = CollideCharacters(NewX, NewY, PLAYER, True)
+                    If I > 0 Then
+                        If Characters(I).TouchScriptNumber > 0 Then
+                            Talking = True
+                            SetScriptState TALKING_SCRIPT_STATE, _
+                                Characters(I).TouchScriptNumber
+                        End If
+                    End If
                 End If
             End If
 
@@ -739,6 +750,11 @@ Do
         ' player is invisible, and in their place is a box showing the
         ' current map location (that is, tile) to be edited.
         HandleEditorArrowKeys
+
+        If KeyPressed(Asc("p")) Then
+            SetCharacterStartFields PLAYER
+            ShowMessage "updated player's start position"
+        End If
 
         ' Set/unset the "anchor point"
         If KeyPressed(Asc("a")) Then
@@ -930,6 +946,7 @@ Sub PrintHelp
         Print " Arrow keys: move"
         Print " 0-9: place tile"
         Print " A: set/unset anchor point"
+        Print " P: set player's start position"
         PrintEditorHelp
     ElseIf Mode = MAP_SCROLL_MODE Then
         Print " Arrow keys: scroll the map"
@@ -1443,13 +1460,9 @@ Sub LoadMap(Filename As String)
     Loop
     Close File
 
-    ' Set the "start" versions of various fields of the player character
-    Characters(PLAYER).StartX = Characters(PLAYER).X
-    Characters(PLAYER).StartY = Characters(PLAYER).Y
-    Characters(PLAYER).StartFacing = Characters(PLAYER).Facing
+    SetCharacterStartFields PLAYER
 
     LoadMapTiles
-
     RenderMapImage
 End Sub
 
@@ -1509,7 +1522,6 @@ Sub LoadLinkedMap(Facing As Long)
         Characters(Player).X = MapWidth - 1
         Characters(Player).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
     End If
-    SetCharacterStartFields PLAYER
 End Sub
 
 Sub InitializeCharacter(I As Long)
@@ -2618,7 +2630,17 @@ Sub UpdateScriptState(StateNumber As Long)
             Characters(PLAYER).X = Characters(I).X
             Characters(PLAYER).Y = Characters(I).Y
             Characters(PLAYER).Facing = Characters(I).Facing
-            SetCharacterStartFields PLAYER
+
+            ' If player has landed somewhere solid, they should walk forward.
+            ' This means e.g. when you exit from a "secret door", you walk
+            ' out of it onto a regular NOT_SOLID tile.
+            If MapSolidityAt(PlayerX, PlayerY) = SOLID Then
+                Characters(PLAYER).X = PlayerX + _
+                    FacingAddX(Characters(PLAYER).Facing)
+                Characters(PLAYER).Y = PlayerY + _
+                    FacingAddY(Characters(PLAYER).Facing)
+                Characters(PLAYER).State = STATE_WALKING
+            End If
 
             ' Okay, we loaded a different map.
             ' Exit this subroutine/script, and restart the game's main loop!

@@ -139,6 +139,9 @@
         IsPokemon.
         Have buttons for incrementing/decrementing TileStartX and TileStartY.
 [X] Walking off sides of map should optionally lead to other maps
+[X] Add pokeballs
+    [X] You can throw them, and catch things!
+    [X] You need to have them in your inventory, and they get used up.
 [ ] Add player's inventory
     [X] Type Item: Name As String, Count As Long, IsHidden As Integer
         ...where hidden items can be used to implement global variables.
@@ -160,9 +163,6 @@
         Or do we want to have "init" scripts?.. that's probably nicer?..
         Or maybe we do both, because picking up items is a common case,
         and it's nice if it's easy to achieve...
-[ ] Add pokeballs
-    [X] You can throw them, and catch things!
-    [ ] You need to have them in your inventory, and they get used up.
 [ ] Add money
 
 

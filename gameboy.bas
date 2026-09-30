@@ -702,12 +702,18 @@ Do
                 End If
             End If
 
+            ' Cheat: give yourself free pokeballs!..
+            If KeyPressed(Asc("X")) Then
+                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") + 5
+            End If
+
             ' Handle gameboy's "B" button
             If _
-                KeyPressed(ButtonBCode) And _
-                Characters(PLAYER).State = STATE_STANDING _
+                KeyPressed(ButtonBCode) _
+                And Characters(PLAYER).State = STATE_STANDING _
+                And GetItemCount("POKEBALLS") > 0 _
             Then
-                ' TODO: decrement pokeballs
+                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") - 1
                 AddBall
             End If
 
@@ -806,6 +812,13 @@ Do
         For I = 1 To UBound(Balls)
             RenderBall I
         Next
+
+        Dim Pokeballs As Long
+        Pokeballs = GetItemCount("POKEBALLS")
+        If Pokeballs > 0 Then
+            WriteAt 0, ScreenHeight / TileHeight - 1, 0
+            WriteText "POKEBALLS *" + Str$(Pokeballs)
+        End If
     ElseIf Mode = MAP_EDITOR_MODE Then
         ' Move the player with the arrow keys; in map editor mode, the
         ' player is invisible, and in their place is a box showing the

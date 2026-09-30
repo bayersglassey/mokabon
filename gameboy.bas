@@ -3088,6 +3088,7 @@ Sub RemoveCharacter(I As Long)
 End Sub
 
 Function FindScriptNumber(I As Long, ScriptName As String)
+    If ScriptName = "" Then Exit Function
     Dim J As Long, ScriptsStart As Long
     ScriptsStart = Characters(I).ScriptsStart
     For J = ScriptsStart To ScriptsStart + Characters(I).ScriptsLength - 1

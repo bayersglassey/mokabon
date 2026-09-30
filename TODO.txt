@@ -209,6 +209,7 @@
     The former should be used to update character's sprite for rendering,
     e.g. after we modify their Facing.
 [X] Remember which characters have STATE_GONE between map changes.
+[X] You can catch farfetch'd just by running into it?!..
 [ ] Don't let characters walk onto each other via loop scripts
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around

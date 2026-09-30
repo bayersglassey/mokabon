@@ -142,7 +142,7 @@
 [X] Add pokeballs
     [X] You can throw them, and catch things!
     [X] You need to have them in your inventory, and they get used up.
-[ ] Add player's inventory
+[X] Add player's inventory
     [X] Type Item: Name As String, Count As Long, IsHidden As Integer
         ...where hidden items can be used to implement global variables.
         Yes, it's a hack.
@@ -156,7 +156,7 @@
     [X] Add a bike item, when you have it, gb's Select button puts you
         on/off it.
     [X] Add Start button menu, with an ITEMS option
-    [ ] Need a way to save/load the game, including player's position and
+    [X] Need a way to save/load the game, including player's position and
         items, etc.
         Also need to save which items you've already picked up...
         So like, which characters are in STATE_GONE?.. does that suffice?..
@@ -204,12 +204,12 @@
     forward a step.
 [X] Add screen transitions!
 [X] Fix JUMP_UP letting you jump onto solid stuff!
+[X] Remember which characters have STATE_GONE between map changes.
+[X] You can catch farfetch'd just by running into it?!..
 [ ] Split HandleCharacterAnimation into something which updates ExtraX,
     ExtraY, etc, and something which updates Frame, etc.
     The former should be used to update character's sprite for rendering,
     e.g. after we modify their Facing.
-[X] Remember which characters have STATE_GONE between map changes.
-[X] You can catch farfetch'd just by running into it?!..
 [ ] Don't let characters walk onto each other via loop scripts
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around

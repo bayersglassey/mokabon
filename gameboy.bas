@@ -164,6 +164,7 @@ Dim Shared WriteStartX As Long
 Dim Shared WriteWidth As Long
 
 ' Used by subroutines Parse, NextToken
+Dim Shared ParseFilename As String
 Dim Shared ParseText As String
 Dim Shared Token As String
 
@@ -191,6 +192,9 @@ Const OPERATOR_MORE_OR_EQUAL = 6
 ' of complex data
 Dim Shared Serialized As String
 Dim Shared SerializeNeedComma As Integer
+
+Dim Shared SaveFilename As String
+SetSaveSlot 0
 
 
 ' #################################################################
@@ -513,7 +517,6 @@ Const PLAYER = 1
 Type Item
     Name As String
     Count As Long
-    Hidden As Integer ' True or False
 End Type
 
 ReDim Shared Items(0) As Item
@@ -536,18 +539,20 @@ Type CharacterInfo
     IsGone As Integer
 End Type
 
-ReDim Shared CharacterInfo(0) As CharacterInfo
+ReDim Shared CharacterInfos(0) As CharacterInfo
 
 
 ' ########################################################################
 ' # THAT'S THE END OF ALL THE DECLARATIONS!
 ' # NOW WE ACTUALLY CREATE A WINDOW AND START THE GAME!
 
+On Error Goto ErrorHandler
+
 ' Load the map!..
 ' NOTE: MapFilename might change later, if the user wants to save the map
 ' to a different file.
 MapFilename = "maps/test0.txt"
-LoadMap MapFilename
+LoadMap
 
 ' Set up the window/screen
 Screen _NewImage(WindowWidth, WindowHeight, 32)
@@ -776,6 +781,23 @@ Do
                 GameMenu = MENU_ROOT
                 GameMenuRoot = 1
             End If
+
+            ' Handle saving/loading game
+            For I = 0 To 9
+                If KeyPressed(Asc("0") + I) Then
+                    SetSaveSlot I
+                    ShowMessage "Using save slot:" + Str$(I)
+                EndIf
+            Next
+            If KeyPressed(F5Code) Then
+                ShowMessage "Saving game to: " + SaveFilename
+                SaveGame
+            End If
+            If KeyPressed(F7Code) Then
+                FadeOut
+                LoadGame
+                FadeIn
+            End If
         End If
 
         ' Update all balls
@@ -959,6 +981,13 @@ Loop Until _KeyDown(EscapeCode) ' Quit if escape key is pressed
 
 System ' Close the program without saying "Press any key..."
 
+ErrorHandler:
+Dim Shared ErrMsg As String
+If ErrMsg = "" Then ErrMsg = "Unknown error"
+ShowMessage "ERROR" + Str$(Err) + " at line" + Str$(_Errorline) _
+    + ": " + ErrMsg
+End
+
 
 ' ########################################################################
 ' # FUNCTION AND SUBROUTINE DEFINITIONS
@@ -1015,6 +1044,8 @@ Sub PrintHelp
         Print " X: gameboy's B button"
         Print " C: gameboy's Select button"
         Print " Enter: gameboy's Start button"
+        Print " F5: save game"
+        Print " F7: load game"
         Print " M: switch to map editor mode"
     ElseIf Mode = MAP_EDITOR_MODE Then
         Print " Arrow keys: move"
@@ -1267,7 +1298,8 @@ Sub Die(Message As String)
     End
 End Sub
 
-Sub Parse(Text As String)
+Sub Parse(Filename As String, Text As String)
+    ParseFilename = Filename
     ParseText = Text
 
     ' Strip spaces from the beginning of the line
@@ -1301,7 +1333,19 @@ End Sub
 
 Sub ParseDie(Text As String)
     Die "Don't know what to do with line" + Str$(LineNumber) _
-        + ": [" + Text + "]"
+        + " of " + ParseFilename + ": [" + Text + "]"
+End Sub
+
+Sub OpenForInput(Filename As String, File As Long)
+    ErrMsg = "Couldn't open " + Filename
+    Open Filename For Input As File
+    ErrMsg = ""
+End Sub
+
+Sub OpenForOutput(Filename As String, File As Long)
+    ErrMsg = "Couldn't open " + Filename
+    Open Filename For Output As File
+    ErrMsg = ""
 End Sub
 
 Sub LoadMapTiles
@@ -1320,10 +1364,11 @@ Sub LoadMapTiles
     LineNumber = 0
 
     File = FreeFile
-    Open Filename For Input As File
+    OpenForInput Filename, File
     Do Until Eof(File)
         Line Input #File, Text
         LineNumber = LineNumber + 1
+        Parse Filename, Text
         Dim FirstChar As String
         FirstChar = Left$(Text, 1)
         If Text = "" Or FirstChar = "#" Then
@@ -1368,7 +1413,7 @@ Sub SaveMap(Filename As String)
     Dim I As Long, X As Long, Y As Long
     Dim File As Long
     File = FreeFile
-    Open Filename For Output As File
+    OpenForOutput Filename, File
         Print #File, "tileset "; MapTilesetNumber
         Print #File, ""
 
@@ -1454,10 +1499,10 @@ Function FacingStr$(Facing As Long)
     If Facing = FACING_RIGHT Then FacingStr$ = "r"
 End Function
 
-Sub LoadMap(Filename As String)
+Sub LoadMap
     Dim File As Long
     Dim Text As String
-    Dim I As Long, J As Long, X As Long, Y As Long
+    Dim I As Long, X As Long, Y As Long
 
     LineNumber = 0
     MapTilesetNumber = 0
@@ -1476,11 +1521,11 @@ Sub LoadMap(Filename As String)
     Next
 
     File = FreeFile
-    Open Filename For Input As File
+    OpenForInput MapFilename, File
     Do Until Eof(File)
         Line Input #File, Text
-        Parse Text
         LineNumber = LineNumber + 1
+        Parse MapFilename, Text
         If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "tileset" Then
@@ -1497,8 +1542,8 @@ Sub LoadMap(Filename As String)
                 MapHeight * MapTileHeight, 32)
             For Y = 0 To MapHeight - 1
                 Line Input #File, Text
-                Parse Text
                 LineNumber = LineNumber + 1
+                Parse ParseFilename, Text
                 For X = 0 To MapWidth - 1
                     Map(X, Y) = Val("&H" + Token)
                     NextToken
@@ -1535,18 +1580,7 @@ Sub LoadMap(Filename As String)
     Close File
 
     SetCharacterStartFields PLAYER
-
-    ' Load character info for the new map
-    For I = 1 To UBound(CharacterInfo)
-        If CharacterInfo(I).MapFilename <> MapFilename Then _Continue
-        J = FindCharacter(CharacterInfo(I).CharacterName, False)
-        ' NOTE: if the character doesn't exist, that's okay.
-        ' This allows us to edit a map, removing a character, and then
-        ' reload the map in the editor, without the game breaking...
-        If J = 0 Then _Continue
-        If CharacterInfo(I).IsGone Then Characters(J).State = STATE_GONE
-    Next
-
+    LoadCharacterInfos
     LoadMapTiles
     RenderMapImage
 End Sub
@@ -1590,9 +1624,9 @@ Sub LoadLinkedMap(Facing As Long)
     FadeOut
 
     ' Load the new map
-    SaveAllCharacterInfo
+    SaveCharacterInfos
     MapFilename = MapLinkFilenames(Facing)
-    LoadMap MapFilename
+    LoadMap
 
     ' Update player's position, etc on the new map
     If WasRidingBike Then RideBike PLAYER
@@ -1667,8 +1701,8 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
     Characters(I).ScriptsStart = UBound(Scripts) + 1
     Do
         Line Input #File, Text
-        Parse Text
         LineNumber = LineNumber + 1
+        Parse ParseFilename, Text
         If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "name" Then
@@ -2011,8 +2045,8 @@ Sub HandleModeSwitching
         ShowMessage "Map saved!"
     End If
     If KeyPressed(F7Code) Then
-        SaveAllCharacterInfo
-        LoadMap MapFilename
+        SaveCharacterInfos
+        LoadMap
         ShowMessage "Map loaded!"
     End If
 
@@ -2408,8 +2442,8 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
     Start = UBound(ScriptCommands) + 1
     Do
         Line Input #File, Text
-        Parse Text
         LineNumber = LineNumber + 1
+        Parse ParseFilename, Text
         If Text = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "wait" Then
@@ -2775,7 +2809,7 @@ Sub UpdateScriptState(StateNumber As Long)
                 FindScriptNumber(Script.CharacterNumber, Command.Str1)
             State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_MAP Then
-            SaveAllCharacterInfo
+            SaveCharacterInfos
             MapFilename = Command.Str1
             FixMapFilename MapFilename
 
@@ -2784,7 +2818,7 @@ Sub UpdateScriptState(StateNumber As Long)
             ' Load the indicated map
             Dim WasRidingBike As Integer
             WasRidingBike = RidingBike(PLAYER)
-            LoadMap MapFilename
+            LoadMap
             If WasRidingBike Then RideBike PLAYER
 
             ' Locate the player at the (probably hidden) character indicated
@@ -3050,7 +3084,6 @@ Sub SetItemCount(ItemName As String, Count As Long)
         I = UBound(Items) + 1
         ReDim _Preserve Items(I) As Item
         Items(I).Name = ItemName
-        Items(I).Hidden = False
     End If
     If I > 0 Then Items(I).Count = Count
 End Sub
@@ -3400,9 +3433,9 @@ End Sub
 
 Function FindCharacterInfo(MapFilename As String, CharacterName As String)
     Dim I As Long
-    For I = 1 To UBound(CharacterInfo)
-        If CharacterInfo(I).MapFilename = MapFilename _
-            And CharacterInfo(I).CharacterName = CharacterName _
+    For I = 1 To UBound(CharacterInfos)
+        If CharacterInfos(I).MapFilename = MapFilename _
+            And CharacterInfos(I).CharacterName = CharacterName _
         Then
             FindCharacterInfo = I
             Exit Function
@@ -3415,17 +3448,148 @@ Sub SaveCharacterInfo(MapFilename As String, CharacterName As String)
     I = FindCharacterInfo(MapFilename, CharacterName)
     J = FindCharacter(CharacterName, True)
     If I = 0 Then
-        I = UBound(CharacterInfo) + 1
-        ReDim _Preserve CharacterInfo(I) As CharacterInfo
-        CharacterInfo(I).MapFilename = MapFilename
-        CharacterInfo(I).CharacterName = CharacterName
+        I = UBound(CharacterInfos) + 1
+        ReDim _Preserve CharacterInfos(I) As CharacterInfo
+        CharacterInfos(I).MapFilename = MapFilename
+        CharacterInfos(I).CharacterName = CharacterName
     End If
-    CharacterInfo(I).IsGone = Characters(J).State = STATE_GONE
+    CharacterInfos(I).IsGone = Characters(J).State = STATE_GONE
 End Sub
 
-Sub SaveAllCharacterInfo
+Sub SaveCharacterInfos
     Dim I As Long
     For I = PLAYER + 1 To UBound(Characters)
         SaveCharacterInfo MapFilename, Characters(I).Name
     Next
+End Sub
+
+Sub LoadCharacterInfos
+    Dim I As Long, J As Long
+    For I = 1 To UBound(CharacterInfos)
+        If CharacterInfos(I).MapFilename <> MapFilename Then _Continue
+        J = FindCharacter(CharacterInfos(I).CharacterName, False)
+        ' NOTE: if the character doesn't exist, that's okay.
+        ' This allows us to edit a map, removing a character, and then
+        ' reload the map in the editor, without the game breaking...
+        If J = 0 Then _Continue
+        If CharacterInfos(I).IsGone Then Characters(J).State = STATE_GONE
+    Next
+End Sub
+
+Sub SetSaveSlot(Slot As Long)
+    SaveFilename = "saves/" + Mid$(Str$(Slot), 2) + ".txt"
+End Sub
+
+Sub SaveGame
+    Dim File As Long
+    Dim I As Long
+
+    SaveCharacterInfos
+
+    File = FreeFile
+    OpenForOutput SaveFilename, File
+
+    Print #File, "map "; MapFilename
+    Print #File, "name "; Characters(PLAYER).Name
+    Print #File, "facing "; FacingStr$(Characters(PLAYER).Facing)
+    Print #File, "position "; PlayerX; PlayerY
+    Print #File, ""
+
+    For I = 1 To UBound(Items)
+        Print #File, "item "; Items(I).Name; Str$(Items(I).Count)
+    Next
+    Print #File, ""
+
+    For I = 1 To UBound(CharacterInfos)
+        Print #File, "character " + CharacterInfos(I).CharacterName
+            Print #File, "    map "; CharacterInfos(I).MapFilename
+            If CharacterInfos(I).IsGone Then Print #File, "    gone"
+        Print #File, "end"
+    Next
+
+    Close File
+End Sub
+
+Sub LoadGame
+    Dim File As Long
+    Dim Text As String
+
+    ' NOTE: we clear the "character infos" array before we begin parsing,
+    ' and in particular before we load the new map, since LoadMap calls
+    ' LoadCharacterInfos, but we want to manually call LoadCharacterInfos
+    ' ourselves after we've parsed them all.
+    ReDim CharacterInfos(0) As CharacterInfo
+
+    File = FreeFile
+    OpenForInput SaveFilename, File
+    Do Until Eof(File)
+        Line Input #File, Text
+        LineNumber = LineNumber + 1
+        Parse SaveFilename, Text
+        If Text = "" Or Left$(Text, 1) = "#" Then
+            ' Empty line or comment, ignore it!
+        ElseIf Token = "map" Then
+            ' NOTE: the map should be loaded before anything else happens,
+            ' because it clears many global arrays etc
+            MapFilename = ParseText
+            LoadMap
+        ElseIf Token = "name" Then
+            NextToken
+            Characters(PLAYER).Name = Token
+        ElseIf Token = "facing" Then
+            NextToken
+            Characters(PLAYER).Facing = ParseFacing(Token)
+        ElseIf Token = "position" Then
+            NextToken
+            Characters(PLAYER).X = Val(Token)
+            NextToken
+            Characters(PLAYER).Y = Val(Token)
+        ElseIf Token = "item" Then
+            Dim ItemName As String, ItemCount As Long
+            NextToken
+            ItemName = Token
+            NextToken
+            ItemCount = Val(Token)
+            SetItemCount ItemName, ItemCount
+        ElseIf Token = "character" Then
+            NextToken
+            ParseCharacterInfo File, Token
+        Else
+            ParseDie Text
+        End If
+    Loop
+
+    ' Load the characters infos we parsed
+    LoadCharacterInfos
+
+    Close File
+End Sub
+
+Sub ParseCharacterInfo(File As Long, CharacterName As String)
+    Dim I As Long
+    Dim Text As String
+    Dim CharacterInfo As CharacterInfo
+    CharacterInfo.CharacterName = CharacterName
+
+    Do
+        Line Input #File, Text
+        LineNumber = LineNumber + 1
+        Parse ParseFilename, Text
+        If Text = "" Or Left$(Token, 1) = "#" Then
+            ' Empty line or comment, ignore it!
+        ElseIf Token = "map" Then
+            CharacterInfo.MapFilename = ParseText
+        ElseIf Token = "gone" Then
+            CharacterInfo.IsGone = True
+        ElseIf Token = "end" Then
+            Exit Do
+        Else
+            ParseDie Text
+        End If
+    Loop
+
+    ' Append the new CharacterInfo to the global array
+    I = UBound(CharacterInfos) + 1
+    ReDim _Preserve CharacterInfos(I) As CharacterInfo
+    CharacterInfos(I) = CharacterInfo
 End Sub

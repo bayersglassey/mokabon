@@ -514,6 +514,9 @@ Dim Shared SelectedCharacter As Long
 ' Index into Characters
 Const PLAYER = 1
 
+' Whether or not we're in "throwing mode", ready to throw a pokeball
+Dim Shared Throwing As Integer
+
 Type Item
     Name As String
     Count As Long
@@ -659,7 +662,25 @@ Do
 
         ' Handle player's controls, that is, react to keys the player
         ' is pressing
-        If Characters(PLAYER).State = STATE_STANDING Then
+        If Throwing Then
+            ' We're ready to throw a pokeball
+            MoveDirection = GetPlayerMoveDirection(True)
+            If MoveDirection >= 0 Then
+                ' A single arrow key was pressed!.. so, let's face that
+                ' direction
+                Characters(PLAYER).Facing = MoveDirection
+            End If
+            If KeyPressed(ButtonACode) And GetItemCount("POKEBALLS") > 0 Then
+                ' Actually throw a pokeball!
+                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") - 1
+                AddBall
+            End If
+            If KeyPressed(Asc("X")) Then
+                ' Cheat: give yourself free pokeballs!..
+                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") + 5
+            End If
+            If KeyPressed(ButtonBCode) Then Throwing = False
+        ElseIf Characters(PLAYER).State = STATE_STANDING Then
             ' Handle arrow keys
             MoveDirection = GetPlayerMoveDirection(True)
             If MoveDirection >= 0 Then
@@ -707,26 +728,11 @@ Do
                 End If
             End If
 
-            ' Cheat: give yourself free pokeballs!..
-            If KeyPressed(Asc("X")) Then
-                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") + 5
-            End If
-
             ' Handle gameboy's "B" button
-            If _
-                KeyPressed(ButtonBCode) _
-                And Characters(PLAYER).State = STATE_STANDING _
-                And GetItemCount("POKEBALLS") > 0 _
-            Then
-                SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") - 1
-                AddBall
-            End If
+            If KeyPressed(ButtonBCode) Then Throwing = True
 
             ' Handle gameboy's "A" button
-            If _
-                KeyPressed(ButtonACode) And _
-                Characters(PLAYER).State = STATE_STANDING _
-            Then
+            If KeyPressed(ButtonACode) Then
                 NewX = PlayerX + FacingAddX(Characters(PLAYER).Facing)
                 NewY = PlayerY + FacingAddY(Characters(PLAYER).Facing)
                 I = CollideCharacters(NewX, NewY, PLAYER, True)
@@ -759,15 +765,11 @@ Do
             ' Cheat: give yourself the ability to bike!..
             If KeyPressed(Asc("C")) Then
                 CAN_ALWAYS_BIKE = True
-                If Characters(PLAYER).State = STATE_STANDING Then _
-                    RideBike PLAYER
+                RideBike PLAYER
             End If
 
             ' Handle gameboy's "Select" button
-            If _
-                KeyPressed(ButtonSelectCode) And _
-                Characters(PLAYER).State = STATE_STANDING _
-            Then
+            If KeyPressed(ButtonSelectCode) Then
                 If RidingBike(PLAYER) Then
                     Characters(PLAYER).TileStartY = 0
                 ElseIf Characters(PLAYER).TileStartY = 0 Then
@@ -835,11 +837,12 @@ Do
             RenderBall I
         Next
 
-        Dim Pokeballs As Long
-        Pokeballs = GetItemCount("POKEBALLS")
-        If Pokeballs > 0 Then
-            WriteAt 0, ScreenHeight / TileHeight - 1, 0
-            WriteText "POKEBALLS *" + Str$(Pokeballs)
+        ' Render pokeball count
+        If Throwing Then
+            RenderTextBox 0, 15, 8, 1
+            RenderTile MiscCharacterTileset, 1, 0, 0, 8, 4, -4
+            WriteAt 3, 16, 0
+            WriteText "*" + Str$(GetItemCount("POKEBALLS"))
         End If
     ElseIf Mode = MAP_EDITOR_MODE Then
         ' Move the player with the arrow keys; in map editor mode, the

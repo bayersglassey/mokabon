@@ -85,49 +85,34 @@
         end
     ...where "else" and "end" are command types, and we just search for
     them linearly at runtime.
-[ ] Implement tileset-based menus
-    [ ] Scripts displaying text with a "next" button, like a character
+[X] Implement tileset-based menus
+    [X] Scripts displaying text with a "next" button, like a character
         is talking to you
-        [ ] Various effects, like a shop, a battle, healing your pokemon,
+        [-] Various effects, like a shop, a battle, healing your pokemon,
             etc!.. and then both characters and "triggers" on the map
             can use the same script system.
-    [ ] Menus where you select from one of a number of options, like
+    [X] Menus where you select from one of a number of options, like
         the list of items, your pokemon, etc
-[ ] Implement characters
+[X] Implement characters
     [X] They appear on the map, are animated, etc. The player is one!
     [X] The map includes a list of characters
     [X] Add a "character editor" mode: you can select a character, move
         them around, and change which direction they're facing.
         Hidden characters (i.e. triggers) should be shown as a blinking
         question mark or something.
-    [ ] Some of them should be shop owners, so you can buy items...
-    [ ] Some of them should heal your pokemon...
-[ ] Implement items (lying on the ground, they look like pokeballs)
+    [-] Some of them should be shop owners, so you can buy items...
+    [-] Some of them should heal your pokemon...
+[X] Implement items (lying on the ground, they look like pokeballs)
     NOTE: They aren't actually map tiles!.. rather, they sit on top of
     a map tile, which is uncovered when the item is taken.
-    [ ] Support hidden items, which you can still pick up, just you can't
+    [-] Support hidden items, which you can still pick up, just you can't
         see them!..
 [X] Implement triggers (places on the map you can interact with)...
     Some of them you just step on, some of them you press "A" on, etc.
-[ ] Implement doors...
+[X] Implement doors...
     (Maybe these are just triggers, which use a "change map" action)
     [X] Doors to houses and caves
-    [ ] Support "running off the side of the map" as a door trigger
-[ ] Implement pokemon battles
-    [ ] First of all, you need your own pokemon...
-    [ ] Patches of tall grass should have pokemon...
-        [ ] Need items to work, so we can throw poke balls...
-    [ ] Some characters need to have their pokemon...
-        [ ] Optional "line of sight" where they walk forward and
-            challenge you...
-    [ ] Where do we heal?! Maybe just have some characters/items
-        which fully heal your pokemon.
-        So like, leave a poke-centre employee/machine around for you
-        to interact with.
-    [ ] Need to have a list of pokemon types somewhere, with their
-        images, and then a way to render the battle screen.
-        To begin with, can just be a simple text-based menu.
-
+    [X] Support "running off the side of the map" as a door trigger
 [X] Add items... just characters with IsItem = True?..
     We probably want a STATE_ITEM, so we don't have to add a bunch of
     IsItem checks everywhere.
@@ -163,6 +148,20 @@
         Or do we want to have "init" scripts?.. that's probably nicer?..
         Or maybe we do both, because picking up items is a common case,
         and it's nice if it's easy to achieve...
+[ ] Implement pokemon battles
+    [ ] First of all, you need your own pokemon...
+    [ ] Patches of tall grass should have pokemon...
+        [ ] Need items to work, so we can throw poke balls...
+    [ ] Some characters need to have their pokemon...
+        [ ] Optional "line of sight" where they walk forward and
+            challenge you...
+    [ ] Where do we heal?! Maybe just have some characters/items
+        which fully heal your pokemon.
+        So like, leave a poke-centre employee/machine around for you
+        to interact with.
+    [ ] Need to have a list of pokemon types somewhere, with their
+        images, and then a way to render the battle screen.
+        To begin with, can just be a simple text-based menu.
 [ ] Add money
 
 

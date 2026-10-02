@@ -569,8 +569,7 @@ On Error Goto ErrorHandler
 ' Load the map!..
 ' NOTE: MapFilename might change later, if the user wants to save the map
 ' to a different file.
-'MapFilename = "maps/test0.txt"
-MapFilename = "maps/trainer0.txt"
+MapFilename = "maps/test0.txt"
 LoadMap
 
 ' Set up the window/screen

@@ -1,0 +1,78 @@
+tileset  0 
+
+tiles  24   10 
+5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5
+5 4 4 6 4 3 4 4 7 4 4 4 4 4 4 4 4 3 2 7 8 9 8 5
+5 4 4 4 4 3 4 4 4 7 4 4 4 3 3 3 3 3 3 8 A 8 8 5
+5 4 6 4 4 3 4 4 4 7 7 7 4 4 4 4 4 2 2 7 8 9 A 5
+5 4 4 4 6 3 4 4 4 4 4 7 4 4 4 4 4 4 8 8 8 8 8 5
+5 4 4 3 3 3 3 3 3 3 4 7 7 4 4 4 3 3 3 3 8 8 8 5
+5 4 4 4 4 4 4 4 7 7 7 7 7 7 4 4 7 3 4 2 7 8 9 5
+5 4 4 4 4 4 4 4 4 7 7 4 4 4 7 7 8 3 4 4 2 2 7 5
+5 6 4 4 6 4 4 4 3 3 3 3 3 3 A 9 A 3 4 4 2 2 2 5
+5 5 4 4 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5
+
+link u 
+link r 
+link d maps/route0.txt
+link l 
+
+facing r
+position  19  4 
+
+character
+    name TRAINER
+    images  20 
+    facing l
+    position  21  4 
+    talk 
+        say Hello there!`What's that?`This ball?
+        say I call it a`POKEBALL!
+        say You can use it`to catch Pokemon.
+        say Here, watch this!
+        wait  10 
+        walk d 4 
+        focus 
+        wait  10 
+        face l
+        wait  20 
+        say HEY, POKEMON!
+        wait  30 
+        unhide PIKACHU
+        wait  10 
+        say PIKA!
+        wait  10 
+        throw ball
+        remove PIKACHU
+        say BOMF
+        wait  10 
+        face u
+        say See? So easy!
+        unhide POKEBALLS
+        say Here, have some`for yourself!
+        unfocus
+    end
+end
+
+item
+    name POKEBALLS
+    hidden
+    images  1 
+    position  22  7 
+    talk 
+        if item POKEBALLS <  20 
+            set item POKEBALLS  20 
+        end
+        say Got POKEBALLS.`Comeback for more`anytime!
+    end
+end
+
+character
+    name PIKACHU
+    hidden
+    pokemon
+    images  1 
+    facing r
+    position  18  8 
+end
+

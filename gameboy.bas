@@ -212,13 +212,17 @@ Const COMMAND_ON_TOUCH = 8
 Const COMMAND_ON_CATCH = 9
 Const COMMAND_MAP = 10
 Const COMMAND_ADD_ITEM = 11
-Const COMMAND_REMOVE = 12
-Const COMMAND_IF_CHOOSE = 13
-Const COMMAND_IF_ITEM = 14
-Const COMMAND_ELSE = 15
-Const COMMAND_END = 16
-Const COMMAND_HIDE = 17
-Const COMMAND_UNHIDE = 18
+Const COMMAND_SET_ITEM = 12
+Const COMMAND_REMOVE = 13
+Const COMMAND_IF_CHOOSE = 14
+Const COMMAND_IF_ITEM = 15
+Const COMMAND_ELSE = 16
+Const COMMAND_END = 17
+Const COMMAND_HIDE = 18
+Const COMMAND_UNHIDE = 19
+Const COMMAND_THROW_BALL = 20
+Const COMMAND_FOCUS = 21
+Const COMMAND_UNFOCUS = 22
 
 Type ScriptCommand
     CommandType As Integer ' COMMAND_WAIT, etc
@@ -517,6 +521,11 @@ Const PLAYER = 1
 ' Whether or not we're in "throwing mode", ready to throw a pokeball
 Dim Shared Throwing As Integer
 
+' The character on whom the game should "focus", that is, on whose position
+' the map scrolling is based.
+Dim Shared FocusCharacter As Long
+FocusCharacter = PLAYER
+
 Type Item
     Name As String
     Count As Long
@@ -525,6 +534,7 @@ End Type
 ReDim Shared Items(0) As Item
 
 Type Ball
+    CharacterNumber As Long
     X As Long
     Y As Long
     Facing As Long
@@ -533,6 +543,11 @@ Type Ball
 End Type
 
 ReDim Shared Balls(0) As Ball
+
+' During a script, when COMMAND_THROW_BALL happens, Talking is set to
+' True, a ball is added, and TalkingBall is set to its index within Balls.
+' When that ball is removed, TalkingBall is set back to 0.
+Dim Shared TalkingBall As Long
 
 Type CharacterInfo
     ' Information about a character which is preserved even when you
@@ -554,7 +569,8 @@ On Error Goto ErrorHandler
 ' Load the map!..
 ' NOTE: MapFilename might change later, if the user wants to save the map
 ' to a different file.
-MapFilename = "maps/test0.txt"
+'MapFilename = "maps/test0.txt"
+MapFilename = "maps/trainer0.txt"
 LoadMap
 
 ' Set up the window/screen
@@ -587,7 +603,13 @@ Do
             If KeyPressed(ButtonACode) Then TalkingText = ""
         End If
 
-        If TalkingText = "" Then
+        If TalkingBall > 0 Then
+            UpdateBall TalkingBall
+            If Balls(TalkingBall).ShouldRemove Then
+                RemoveBall TalkingBall
+                TalkingBall = 0
+            End If
+        ElseIf TalkingText = "" Then
             UpdateScriptState TALKING_SCRIPT_STATE
             If RestartMainLoop Then
                 ' We loaded a different map, so restart the main loop!
@@ -673,7 +695,7 @@ Do
             If KeyPressed(ButtonACode) And GetItemCount("POKEBALLS") > 0 Then
                 ' Actually throw a pokeball!
                 SetItemCount "POKEBALLS", GetItemCount("POKEBALLS") - 1
-                AddBall
+                AddBall PLAYER
             End If
             If KeyPressed(Asc("X")) Then
                 ' Cheat: give yourself free pokeballs!..
@@ -1519,6 +1541,8 @@ Sub LoadMap
     InitializeCharacter PLAYER
     Characters(PLAYER).Name = "PLAYER"
 
+    ReDim Balls(0) As Ball
+
     For I = 0 To 3
         MapLinkFilenames(I) = ""
     Next
@@ -1529,7 +1553,7 @@ Sub LoadMap
         Line Input #File, Text
         LineNumber = LineNumber + 1
         Parse MapFilename, Text
-        If Text = "" Or Left$(Token, 1) = "#" Then
+        If Token = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "tileset" Then
             NextToken
@@ -1706,7 +1730,7 @@ Sub ParseCharacter(File As Long, IsItem As Integer)
         Line Input #File, Text
         LineNumber = LineNumber + 1
         Parse ParseFilename, Text
-        If Text = "" Or Left$(Token, 1) = "#" Then
+        If Token = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "name" Then
             NextToken
@@ -1926,8 +1950,8 @@ Sub RenderMap
     ' game boy's screen
     Dim MapScrollX As Long
     Dim MapScrollY As Long
-    MapScrollX = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    MapScrollY = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+    MapScrollX = ScreenWidth / 2 - FocusExtraX - 8
+    MapScrollY = ScreenHeight / 2 - FocusExtraY - 8
 
     _PutImage _
         (MapScrollX, MapScrollY) - ( _
@@ -2352,8 +2376,8 @@ Sub RenderCharacter(I As Long)
 
     ' The location in pixels of the top-left corner of the map on the
     ' game boy's screen
-    X = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    Y = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+    X = ScreenWidth / 2 - FocusExtraX - 8
+    Y = ScreenHeight / 2 - FocusExtraY - 8
 
     If Character.IsHidden Then
         ' In "character editor" mode, show an exclamation mark over
@@ -2427,6 +2451,16 @@ Function PlayerExtraY
     PlayerExtraY = Characters(PLAYER).ExtraY
 End Function
 
+Function FocusExtraX
+    FocusExtraX = Characters(FocusCharacter).X * MapTileWidth _
+        + Characters(FocusCharacter).ExtraX
+End Function
+
+Function FocusExtraY
+    FocusExtraY = Characters(FocusCharacter).Y * MapTileHeight _
+        + Characters(FocusCharacter).ExtraY
+End Function
+
 Function AddScriptCommand(CommandType As Integer)
     ReDim _Preserve ScriptCommands(UBound(ScriptCommands) + 1) _
         As ScriptCommand
@@ -2447,7 +2481,7 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
         Line Input #File, Text
         LineNumber = LineNumber + 1
         Parse ParseFilename, Text
-        If Text = "" Or Left$(Token, 1) = "#" Then
+        If Token = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "wait" Then
             I = AddScriptCommand(COMMAND_WAIT)
@@ -2510,10 +2544,16 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
             ScriptCommands(I).Str1 = Token
             NextToken
             ScriptCommands(I).Str2 = Token
-        ElseIf Token = "add" Then
+        ElseIf Token = "add" Or Token = "set" Then
+            Dim FirstToken As String
+            FirstToken = Token
             NextToken
             If Token = "item" Then
-                I = AddScriptCommand(COMMAND_ADD_ITEM)
+                If FirstToken = "add" Then
+                    I = AddScriptCommand(COMMAND_ADD_ITEM)
+                Else
+                    I = AddScriptCommand(COMMAND_SET_ITEM)
+                End If
                 NextToken
                 ScriptCommands(I).Str1 = Token
                 NextToken
@@ -2569,6 +2609,19 @@ Sub ParseScript(File As Long, CharacterNumber As Long, _
             I = AddScriptCommand(COMMAND_UNHIDE)
             NextToken
             ScriptCommands(I).Str1 = Token
+        ElseIf Token = "throw" Then
+            NextToken
+            If Token = "ball" Then
+                I = AddScriptCommand(COMMAND_THROW_BALL)
+            Else
+                ParseDie Text
+            End If
+        ElseIf Token = "focus" Then
+            I = AddScriptCommand(COMMAND_FOCUS)
+            NextToken
+            ScriptCommands(I).Str1 = Token
+        ElseIf Token = "unfocus" Then
+            I = AddScriptCommand(COMMAND_UNFOCUS)
         Else
             ParseDie Text
         End If
@@ -2638,6 +2691,8 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        map "; Command.Str1; " "; Command.Str2
         ElseIf Command.CommandType = COMMAND_ADD_ITEM Then
             Print #File, "        add item "; Command.Str1; " "; Command.Num1
+        ElseIf Command.CommandType = COMMAND_SET_ITEM Then
+            Print #File, "        set item "; Command.Str1; " "; Command.Num1
         ElseIf Command.CommandType = COMMAND_REMOVE Then
             Print #File, "        remove "; Command.Str1
         ElseIf Command.CommandType = COMMAND_IF_CHOOSE Then
@@ -2657,6 +2712,12 @@ Sub WriteScript(File As Long, Script As Script)
             Print #File, "        hide "; Command.Str1
         ElseIf Command.CommandType = COMMAND_UNHIDE Then
             Print #File, "        unhide "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_THROW_BALL Then
+            Print #File, "        throw ball"
+        ElseIf Command.CommandType = COMMAND_FOCUS Then
+            Print #File, "        focus "; Command.Str1
+        ElseIf Command.CommandType = COMMAND_UNFOCUS Then
+            Print #File, "        unfocus"
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
         End If
@@ -2848,6 +2909,9 @@ Sub UpdateScriptState(StateNumber As Long)
             SetItemCount Command.Str1, _
                 GetItemCount(Command.Str1) + Command.Num1
             State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_SET_ITEM Then
+            SetItemCount Command.Str1, Command.Num1
+            State.CommandNumber = State.CommandNumber + 1
         ElseIf Command.CommandType = COMMAND_REMOVE Then
             If Command.Str1 <> "" Then
                 I = FindCharacter(Command.Str1, True)
@@ -2910,6 +2974,29 @@ Sub UpdateScriptState(StateNumber As Long)
                 I = Script.CharacterNumber
             End If
             Characters(I).IsHidden = False
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_THROW_BALL Then
+            If State.Frame = 1 Then
+                ' Done throwing
+                State.CommandNumber = State.CommandNumber + 1
+                State.Frame = 0
+            Else
+                ' Start throwing
+                AddBall Script.CharacterNumber
+                TalkingBall = UBound(Balls)
+                State.Frame = 1
+                Exit Do
+            End If
+        ElseIf Command.CommandType = COMMAND_FOCUS Then
+            If Command.Str1 <> "" Then
+                I = FindCharacter(Command.Str1, True)
+            Else
+                I = Script.CharacterNumber
+            End If
+            FocusCharacter = I
+            State.CommandNumber = State.CommandNumber + 1
+        ElseIf Command.CommandType = COMMAND_UNFOCUS Then
+            FocusCharacter = PLAYER
             State.CommandNumber = State.CommandNumber + 1
         Else
             Die "Unknown command type: " + Str$(Command.CommandType)
@@ -3329,13 +3416,14 @@ Sub FadeIn
     FadeLoop True
 End Sub
 
-Sub AddBall
+Sub AddBall(CharacterNumber As Long)
     Dim I As Long
     I = UBound(Balls) + 1
     ReDim _Preserve Balls(I) As Ball
-    Balls(I).X = PlayerX
-    Balls(I).Y = PlayerY
-    Balls(I).Facing = Characters(PLAYER).Facing
+    Balls(I).CharacterNumber = CharacterNumber
+    Balls(I).X = Characters(CharacterNumber).X
+    Balls(I).Y = Characters(CharacterNumber).Y
+    Balls(I).Facing = Characters(CharacterNumber).Facing
     Balls(I).Frame = 0
 End Sub
 
@@ -3371,7 +3459,7 @@ Sub UpdateBall(I As Long)
     Y = Ball.Y + ExtraY / MapTileHeight
 
     ' See if we collided with any characters
-    J = CollideCharacters(X, Y, PLAYER, False)
+    J = CollideCharacters(X, Y, Ball.CharacterNumber, False)
     If J > 0 Then
         If Characters(J).CatchScriptNumber > 0 Then
             Talking = True
@@ -3390,7 +3478,7 @@ Sub UpdateBall(I As Long)
 
     ' See if we've hit any solid map tiles
     Dim CanMove As Integer
-    CanMove = CanMoveTo(OldX, OldY, X, Y, Ball.Facing, PLAYER)
+    CanMove = CanMoveTo(OldX, OldY, X, Y, Ball.Facing, Ball.CharacterNumber)
     If CanMove = 0 Then
         Balls(I).ShouldRemove = True
         Exit Sub
@@ -3419,8 +3507,8 @@ Sub RenderBall(I As Long)
 
     ' The location in pixels of the top-left corner of the map on the
     ' game boy's screen
-    X = ScreenWidth / 2 - PlayerX * MapTileWidth - PlayerExtraX - 8
-    Y = ScreenHeight / 2 - PlayerY * MapTileHeight - PlayerExtraY - 8
+    X = ScreenWidth / 2 - FocusExtraX - 8
+    Y = ScreenHeight / 2 - FocusExtraY - 8
 
     ' Render the ball's shadow
     RenderTile MiscCharacterTileset, 9, 0, Ball.X, Ball.Y, _
@@ -3578,7 +3666,7 @@ Sub ParseCharacterInfo(File As Long, CharacterName As String)
         Line Input #File, Text
         LineNumber = LineNumber + 1
         Parse ParseFilename, Text
-        If Text = "" Or Left$(Token, 1) = "#" Then
+        If Token = "" Or Left$(Token, 1) = "#" Then
             ' Empty line or comment, ignore it!
         ElseIf Token = "map" Then
             CharacterInfo.MapFilename = ParseText

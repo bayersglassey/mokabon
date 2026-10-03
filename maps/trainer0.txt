@@ -30,9 +30,9 @@ character
         say I call it a`POKEBALL!
         say You can use it`to catch Pokemon.
         say Here, watch this!
+        focus 
         wait  10 
         walk d 4 
-        focus 
         wait  10 
         face l
         wait  20 
@@ -51,6 +51,16 @@ character
         unhide POKEBALLS
         say Here, have some`for yourself!
         unfocus
+        on talk explain
+    end
+    talk explain
+        say Press B (actually`X on the keyboard)`to aim.
+        say While aiming, use`arrow keys to turn`yourself.
+        say Then, press A`(Z on keyboard)`to throw.
+        say Finally, press B`again (actually Z)`to stop aiming!
+    end
+    catch
+        say Oof! Hey, not at`people!
     end
 end
 
@@ -63,7 +73,7 @@ item
         if item POKEBALLS <  20 
             set item POKEBALLS  20 
         end
-        say Got POKEBALLS.`Comeback for more`anytime!
+        say Got 20 POKEBALLS.`Come back for more`anytime!
     end
 end
 

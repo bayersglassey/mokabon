@@ -524,6 +524,7 @@ Dim Shared Throwing As Integer
 ' The character on whom the game should "focus", that is, on whose position
 ' the map scrolling is based.
 Dim Shared FocusCharacter As Long
+Dim Shared FocusExtraX As Long, FocusExtraY As Long
 FocusCharacter = PLAYER
 
 Type Item
@@ -619,6 +620,7 @@ Do
                 TALKING_SCRIPT_STATE).ScriptNumber).CharacterNumber
         End If
 
+        UpdateFocus
         RenderMap
         For I = 1 To UBound(Characters)
             RenderCharacter I
@@ -844,6 +846,8 @@ Do
             End If
             HandleCharacterAnimation I
         Next
+
+        UpdateFocus
 
         ' Render the map onto the game boy's screen
         RenderMap
@@ -2450,16 +2454,6 @@ Function PlayerExtraY
     PlayerExtraY = Characters(PLAYER).ExtraY
 End Function
 
-Function FocusExtraX
-    FocusExtraX = Characters(FocusCharacter).X * MapTileWidth _
-        + Characters(FocusCharacter).ExtraX
-End Function
-
-Function FocusExtraY
-    FocusExtraY = Characters(FocusCharacter).Y * MapTileHeight _
-        + Characters(FocusCharacter).ExtraY
-End Function
-
 Function AddScriptCommand(CommandType As Integer)
     ReDim _Preserve ScriptCommands(UBound(ScriptCommands) + 1) _
         As ScriptCommand
@@ -3354,6 +3348,7 @@ Sub RenderGameScreen
     For I = 1 To UBound(Characters)
         HandleCharacterAnimation I
     Next
+    UpdateFocus
     RenderMap
     For I = 1 To UBound(Characters)
         RenderCharacter I
@@ -3682,4 +3677,29 @@ Sub ParseCharacterInfo(File As Long, CharacterName As String)
     I = UBound(CharacterInfos) + 1
     ReDim _Preserve CharacterInfos(I) As CharacterInfo
     CharacterInfos(I) = CharacterInfo
+End Sub
+
+Sub UpdateFocus
+    ' Update global variables FocusExtraX, FocusExtraY
+
+    Const SlowScroll = False
+    If SlowScroll Then
+        ' NOTE: slow scrolling is kind of buggy, don't use this for now
+        Dim NewExtraX As Long, NewExtraY As Long
+        NewExtraX = Characters(FocusCharacter).X * MapTileWidth _
+            + Characters(FocusCharacter).ExtraX
+        NewExtraY = Characters(FocusCharacter).Y * MapTileHeight _
+            + Characters(FocusCharacter).ExtraY
+        If NewExtraX < FocusExtraX Then FocusExtraX = FocusExtraX - 2
+        If NewExtraX > FocusExtraX Then FocusExtraX = FocusExtraX + 2
+        If NewExtraY < FocusExtraY Then FocusExtraY = FocusExtraY - 2
+        If NewExtraY > FocusExtraY Then FocusExtraY = FocusExtraY + 2
+    Else
+        ' No scrolling, just jump right to the focused character
+        FocusExtraX = Characters(FocusCharacter).X * MapTileWidth _
+            + Characters(FocusCharacter).ExtraX
+        FocusExtraY = Characters(FocusCharacter).Y * MapTileHeight _
+            + Characters(FocusCharacter).ExtraY
+        Exit Sub
+    End If
 End Sub

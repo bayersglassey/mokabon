@@ -4,4 +4,5 @@ Do
     If K > 0 Then
         Print K
     End If
+    _Limit 30
 Loop

@@ -1,1 +1,2 @@
-qb64 -w -x gameboy.bas
+infile="${infile:-gameboy.bas}"
+qb64 -w -x "$infile"

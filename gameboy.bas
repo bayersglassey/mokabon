@@ -31,6 +31,8 @@ Const F5Code = 16128
 Const F7Code = 16640
 Const PageUpCode = 18688
 Const PageDownCode = 20736
+Const HomeCode = 18176
+Const EndCode = 20224
 
 ' Keyboard key codes for gameboy buttons
 Dim Shared ButtonACode As Long
@@ -61,8 +63,14 @@ Const MAP_EDITOR_MODE = "Map Editor"
 Const MAP_SCROLL_MODE = "Map Scrolling Tool"
 Const MAP_RESIZE_MODE = "Map Resizing Tool"
 Const TILE_SELECTOR_MODE = "Tile Selector"
+Const TILESET_EDITOR_MODE = "Tileset Editor"
 Const CHARACTER_EDITOR_MODE = "Character Editor"
 Mode = GAME_MODE
+
+' Width and height of a tileset in tiles; look at img/tilesets.png to see
+' how the tilesets are, in fact, organized in grids of this width/height.
+Const TilesetWidth = 16
+Const TilesetHeight = 6
 
 ' When the menu is open (after pressing gameboy's Start button), GameMenu
 ' will be > 0, and specifically one of these values:
@@ -329,6 +337,7 @@ Const JUMP_UP = 2
 Const JUMP_DOWN = 3
 Const JUMP_LEFT = 4
 Const JUMP_RIGHT = 5
+Const NUM_SOLIDITY_VALUES = 6
 
 ' Map tiles aren't the same as the regular tiles stored in a Tileset.
 ' Each map tile is actually a 2x2 square of regular tiles, plus some
@@ -336,8 +345,8 @@ Const JUMP_RIGHT = 5
 Const MapTileWidth = TileWidth * 2
 Const MapTileHeight = TileHeight * 2
 Type MapTile
+    Name As String
     Solidity As Integer ' See SOLID, JUMP_DOWN, etc
-    HasPokemon As Integer
 
     ' Top/bottom left/right: tile indexes, to be interpreted as (X, Y)
     ' coordinates of tiles within MapTilesets(I), using "Mod 16" to get the
@@ -348,13 +357,7 @@ Type MapTile
     BR As Long
 End Type
 
-' NOTE: MaxMapTiles is an arbitrary number, just big enough to support
-' all map tile files we ever try to load (see LoadMapTiles)
-Const MaxMapTiles = 200
-Dim Shared MapTiles(0 To MaxMapTiles - 1) As MapTile
-
-' Current number of maptiles, i.e. entries of MapTiles
-Dim Shared NumMapTiles As Long
+ReDim Shared MapTiles(0 To -1) As MapTile
 
 ' Width and height of the map, in "map tiles" (see the MapTile type).
 ' The elements of Map are indices into MapTiles.
@@ -506,9 +509,14 @@ SelectedMapTiles(7) = 6
 SelectedMapTiles(8) = 7
 SelectedMapTiles(9) = 8
 SelectedMapTiles(10) = 9
+
+' Selected tile in TILESET_EDITOR_MODE
+Dim Shared SelectedTileNumber As Long
+
+' Selected map tile in TILE_SELECTOR_MODE
 Dim Shared SelectedMapTileNumber As Long
 
-' The currently selected character, if any (used by CHARACTER_EDITOR_MODE)
+' The currently selected character, or 0. Used in CHARACTER_EDITOR_MODE
 Dim Shared SelectedCharacter As Long
 
 
@@ -912,6 +920,8 @@ Do
             EndIf
         Next
 
+        UpdateFocus
+
         ' Render the map onto the game boy's screen
         RenderMap
 
@@ -922,15 +932,19 @@ Do
         ' Maybe switch to a different mode
         HandleModeSwitching
     ElseIf Mode = MAP_SCROLL_MODE Then
-        RenderMap
         HandleMapScrollMode
         HandleModeSwitching
-    ElseIf Mode = MAP_RESIZE_MODE Then
+        UpdateFocus
         RenderMap
+    ElseIf Mode = MAP_RESIZE_MODE Then
         HandleMapResizeMode
         HandleModeSwitching
+        UpdateFocus
+        RenderMap
     ElseIf Mode = TILE_SELECTOR_MODE Then
         ' Change the currently selected map tile
+        If KeyPressed(HomeCode) Then SelectedMapTileNumber = 0
+        If KeyPressed(EndCode) Then SelectedMapTileNumber = UBound(MapTiles)
         If KeyPressed(UpCode) Then SelectedMapTileNumber = _
             SelectedMapTileNumber - TileSelectorWidth
         If KeyPressed(DownCode) Then SelectedMapTileNumber = _
@@ -940,15 +954,8 @@ Do
         If KeyPressed(RightCode) Then SelectedMapTileNumber = _
             SelectedMapTileNumber + 1
         If SelectedMapTileNumber < 0 Then SelectedMapTileNumber = 0
-        If SelectedMapTileNumber >= NumMapTiles Then _
-            SelectedMapTileNumber = NumMapTiles - 1
-
-        ' Render all map tiles as a grid
-        RenderMapTiles
-
-        ' Draw the map tiles currently selected for use with number keys
-        ' 0-9 at the bottom of the screen
-        RenderSelectedMapTiles
+        If SelectedMapTileNumber > UBound(MapTiles) Then _
+            SelectedMapTileNumber = UBound(MapTiles)
 
         ' Select map tiles using the number keys
         For I = 0 To 9
@@ -959,6 +966,34 @@ Do
 
         ' Change modes
         HandleModeSwitching
+
+        ' Render all map tiles as a grid
+        RenderMapTiles
+
+        ' Draw the map tiles currently selected for use with number keys
+        ' 0-9 at the bottom of the screen
+        RenderSelectedMapTiles
+    ElseIf Mode = TILESET_EDITOR_MODE Then
+        ' Handle keyboard controls
+        HandleTilesetEditorMode
+        HandleModeSwitching
+
+        ' We may have changed the appearance of a map tile, so re-render the
+        ' entire map!..
+        RenderMapImage
+
+        ' Render the current tileset (the small tiles out of which map
+        ' tiles are constructed)
+        RenderTileset
+
+        ' Draw the map tiles currently selected for use with number keys
+        ' 0-9 at the bottom of the screen
+        RenderSelectedMapTiles
+
+        ' Render the selected map tile
+        RenderMapTileAt MapTiles(SelectedMapTileNumber), 1, 5, 0, 0
+        WriteAt 5, 10, 0
+        WriteText SolidityStr$(MapTiles(SelectedMapTileNumber).Solidity)
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         If KeyPressed(Asc(" ")) Then
             If SelectedCharacter Then
@@ -993,6 +1028,9 @@ Do
     Locate 1, 1
     If Mode = CHARACTER_EDITOR_MODE And SelectedCharacter Then
         Print Mode; ": "; Characters(SelectedCharacter).Name
+    ElseIf Mode = TILESET_EDITOR_MODE Or Mode = TILE_SELECTOR_MODE Then
+        Print Mode; " ("; SelectedMapTileNumber + 1; "/"; _
+            UBound(MapTiles) + 1; "): "; MapTiles(SelectedMapTileNumber).Name
     ElseIf Mode = MAP_RESIZE_MODE Then
         Print Mode; ": "; MapWidth; " x "; MapHeight
     Else
@@ -1055,6 +1093,7 @@ Sub PrintEditorHelp
     Print " F7: load map"
     Print " M: switch to map editor mode"
     Print " T: switch to tile selection mode"
+    Print " Y: switch to tileset editor mode"
     Print " S: switch to map scroll mode"
     Print " R: switch to map resize mode"
     Print " C: switch to character editor mode"
@@ -1076,8 +1115,9 @@ Sub PrintHelp
         Print " F7: load game"
         Print " M: switch to map editor mode"
     ElseIf Mode = MAP_EDITOR_MODE Then
-        Print " Arrow keys: move"
-        Print " 0-9: place tile"
+        Print " Arrow keys: move the cursor"
+        Print " 0-9: place tile at cursor"
+        Print " Shift + 0-9: choose tile at cursor
         Print " A: set/unset anchor point"
         Print " P: set player's start position"
         PrintEditorHelp
@@ -1090,6 +1130,15 @@ Sub PrintHelp
     ElseIf Mode = TILE_SELECTOR_MODE Then
         Print " Arrow keys: move"
         Print " 0-9: choose tile"
+        PrintEditorHelp
+    ElseIf Mode = TILESET_EDITOR_MODE Then
+        Print " Page Up/Down, Home/End, 0-9: choose map tile"
+        Print " Arrow keys: choose tile"
+        Print " Q/W/A/S: set map tile's corresponding corner to"
+        Print "          chosen tile"
+        Print " Shift + Q/W/A/S: set chosen tile to map tile's"
+        Print "                  corresponding corner"
+        Print " Z: cycle map tile's solidity"
         PrintEditorHelp
     ElseIf Mode = CHARACTER_EDITOR_MODE Then
         Print " Arrow keys: move"
@@ -1209,6 +1258,94 @@ Sub ResizeMap(AddX As Long, AddY As Long)
     RenderMapImage
 End Sub
 
+Sub ChangeFilename(Filename As String, _
+    ThingType As String, Directory As String _
+)
+    _Dest 0
+    Dim NewFilename As String
+    Print "Current " + ThingType + " filename: " + Filename
+    Print "Change " + ThingType + " filename: ";
+    Input NewFilename
+    If NewFilename <> "" Then
+        Filename = NewFilename
+        FixFilename Filename, Directory
+        Print "Changed " + ThingType + " filename to: " + Filename
+    Else
+        Print "Left " + ThingType + " filename as it was!"
+    End If
+    _Display
+    WaitForEnter
+End Sub
+
+Sub HandleTilesetEditorMode
+    ' Tileset saving/loading
+    If KeyPressed(F5Code) Then
+        SaveMapTiles
+        ShowMessage "Tileset saved!"
+    End If
+    If KeyPressed(F7Code) Then
+        LoadMapTiles
+        ShowMessage "Tileset loaded!"
+    End If
+
+    ' Change the currently selected map tile
+    If KeyPressed(HomeCode) Then SelectedMapTileNumber = 0
+    If KeyPressed(EndCode) Then SelectedMapTileNumber = UBound(MapTiles)
+    If KeyPressed(PageUpCode) Then SelectedMapTileNumber = _
+        SelectedMapTileNumber + 1
+    If KeyPressed(PageDownCode) Then SelectedMapTileNumber = _
+        SelectedMapTileNumber - 1
+    If SelectedMapTileNumber < 0 Then SelectedMapTileNumber = 0
+    If SelectedMapTileNumber > UBound(MapTiles) Then _
+        SelectedMapTileNumber = UBound(MapTiles)
+    Dim I As Long
+    For I = 0 To 9
+        If KeyPressed(Asc("0") + I) Then
+            SelectedMapTileNumber = SelectedMapTiles(I + 1)
+        EndIf
+    Next
+
+    ' Change the currently selected tile (the small tiles out of which
+    ' map tiles are constructed)
+    If KeyPressed(UpCode) Then SelectedTileNumber = _
+        SelectedTileNumber - TilesetWidth
+    If KeyPressed(DownCode) Then SelectedTileNumber = _
+        SelectedTileNumber + TilesetWidth
+    If KeyPressed(LeftCode) Then SelectedTileNumber = _
+        SelectedTileNumber - 1
+    If KeyPressed(RightCode) Then SelectedTileNumber = _
+        SelectedTileNumber + 1
+    If SelectedTileNumber < 0 Then SelectedTileNumber = 0
+    If SelectedTileNumber >= TilesetWidth * TilesetHeight Then _
+        SelectedTileNumber = TilesetWidth * TilesetHeight - 1
+
+    ' Set map tile's tiles to selected tile
+    If KeyPressed(Asc("q")) Then _
+        MapTiles(SelectedMapTileNumber).TL = SelectedTileNumber
+    If KeyPressed(Asc("w")) Then _
+        MapTiles(SelectedMapTileNumber).TR = SelectedTileNumber
+    If KeyPressed(Asc("a")) Then _
+        MapTiles(SelectedMapTileNumber).BL = SelectedTileNumber
+    If KeyPressed(Asc("s")) Then _
+        MapTiles(SelectedMapTileNumber).BR = SelectedTileNumber
+
+    ' Set selected tile to map tile's tiles
+    If KeyPressed(Asc("Q")) Then _
+        SelectedTileNumber = MapTiles(SelectedMapTileNumber).TL
+    If KeyPressed(Asc("W")) Then _
+        SelectedTileNumber = MapTiles(SelectedMapTileNumber).TR
+    If KeyPressed(Asc("A")) Then _
+        SelectedTileNumber = MapTiles(SelectedMapTileNumber).BL
+    If KeyPressed(Asc("S")) Then _
+        SelectedTileNumber = MapTiles(SelectedMapTileNumber).BR
+
+    ' Change the solidity of current map tile
+    If KeyPressed(Asc("z")) Then _
+        MapTiles(SelectedMapTileNumber).Solidity = _
+            (MapTiles(SelectedMapTileNumber).Solidity + 1) _
+            Mod NUM_SOLIDITY_VALUES
+End Sub
+
 Sub SetTilesetClearColor(T As Tileset)
     ' Set the "clear color", i.e. the transparent color, for the given
     ' tileset's image
@@ -1313,7 +1450,15 @@ Sub ShowMessage(Message As String)
     Locate 1, 1
     Print Message
     _Display ' Show the message
-    Sleep ' Wait for a key to be pressed
+    WaitForEnter
+End Sub
+
+Sub WaitForEnter
+    While Inkey$ <> Chr$(EnterCode)
+    Wend
+
+    ' The Enter key was just pressed!
+    PrevKeyCode = EnterCode
 End Sub
 
 Sub Die(Message As String)
@@ -1376,20 +1521,59 @@ Sub OpenForOutput(Filename As String, File As Long)
     ErrMsg = ""
 End Sub
 
+Function TilesetFilename$
+    TilesetFilename$ = "tilesets/" + LTrim$(Str$(MapTilesetNumber)) + ".txt"
+End Function
+
+Function Hex2$(Value As Long)
+    Dim S As String
+    S = Hex$(Value)
+    If Len(S) = 1 Then S = "0" + S
+    Hex2$ = S
+End Function
+
+Sub SaveMapTiles
+    Dim Filename As String
+    Dim File As Long
+    Dim I As Long
+
+    ' E.g. "tilesets/0.txt"
+    Filename = TilesetFilename$
+
+    File = FreeFile
+    OpenForOutput Filename, File
+    For I = 0 To UBound(MapTiles)
+        Dim MapTile As MapTile
+        MapTile = MapTiles(I)
+        Print #File, "/"; MapTile.Name
+        If MapTile.Solidity <> NOT_SOLID Then _
+            Print #File, SolidityStr$(MapTile.Solidity)
+        Print #File, Hex2$(MapTile.TL); " "; Hex2$(MapTile.TR)
+        Print #File, Hex2$(MapTile.BL); " "; Hex2$(MapTile.BR)
+        Print #File, ""
+    Next
+    Close File
+End Sub
+
 Sub LoadMapTiles
     Dim Filename As String
     Dim File As Long
     Dim Text As String
-    Dim ParsingBottom As Long
+
+    ' 0 = looking for a new map tile (i.e. looking for name)
+    ' 1 = found new map tile (i.e. found name, accepting solidity or first
+    '     "row", i.e. top-left and top-right tiles)
+    ' 2 = found first "row", looking for the second one
+    Dim ParseState As Integer
 
     ' E.g. "tilesets/0.txt"
-    Filename = "tilesets/" + LTrim$(Str$(MapTilesetNumber)) + ".txt"
+    Filename = TilesetFilename$
 
-    ' Index into MapTiles
-    Dim I As Long
-    I = 0
+    ReDim MapTiles(0 To -1) As MapTile
 
     LineNumber = 0
+
+    Dim MapTile As MapTile
 
     File = FreeFile
     OpenForInput Filename, File
@@ -1401,40 +1585,57 @@ Sub LoadMapTiles
         FirstChar = Left$(Text, 1)
         If Text = "" Or FirstChar = "#" Then
             ' Empty line or comment, ignore it!
-        ElseIf Text = "solid" Then
-            MapTiles(I).Solidity = SOLID
-        ElseIf Text = "jumpup" Then
-            MapTiles(I).Solidity = JUMP_UP
-        ElseIf Text = "jumpdown" Then
-            MapTiles(I).Solidity = JUMP_DOWN
-        ElseIf Text = "jumpleft" Then
-            MapTiles(I).Solidity = JUMP_LEFT
-        ElseIf Text = "jumpright" Then
-            MapTiles(I).Solidity = JUMP_RIGHT
-        ElseIf Text = "pokemon" Then
-            MapTiles(I).HasPokemon = True
-        ElseIf ParsingBottom Then
-            ' Parsing bottom two tiles of this map tile
-            MapTiles(I).BL = Val("&H" + Left$(Text, 2))
-            MapTiles(I).BR = Val("&H" + Mid$(Text, 4, 2))
-            ParsingBottom = False
-            I = I + 1
-        ElseIf Instr("0123456789abcdef", FirstChar) Then
-            ' Parsing top two tiles of this map tile
-            MapTiles(I).TL = Val("&H" + Left$(Text, 2))
-            MapTiles(I).TR = Val("&H" + Mid$(Text, 4, 2))
-            ParsingBottom = True
+        ElseIf ParseState = 0 Then
+            ' Looking for a new map tile
+            If FirstChar = "/" Then
+                ' Begin parsing a new maptile
+                MapTile.Name = Mid$(Text, 2)
+                MapTile.Solidity = NOT_SOLID
+                ParseState = 1
+            Else
+                ParseDie Text
+            End If
+        ElseIf ParseState = 1 Then
+            ' Parsing solidity, top two tiles of current map tile
+            If Text = "not solid" Then
+                MapTile.Solidity = NOT_SOLID
+            ElseIf Text = "solid" Then
+                MapTile.Solidity = SOLID
+            ElseIf Text = "jump up" Then
+                MapTile.Solidity = JUMP_UP
+            ElseIf Text = "jump down" Then
+                MapTile.Solidity = JUMP_DOWN
+            ElseIf Text = "jump left" Then
+                MapTile.Solidity = JUMP_LEFT
+            ElseIf Text = "jump right" Then
+                MapTile.Solidity = JUMP_RIGHT
+            ElseIf Instr("0123456789abcdef", FirstChar) Then
+                ' Parsing top two tiles of this map tile
+                MapTile.TL = Val("&H" + Left$(Text, 2))
+                MapTile.TR = Val("&H" + Mid$(Text, 4, 2))
+                ParseState = 2
+            Else
+                ParseDie Text
+            End If
+        ElseIf ParseState = 2 Then
+            ' Parsing bottom two tiles of current map tile
+            If Instr("0123456789abcdef", FirstChar) Then
+                ' Parsing bottom two tiles of this map tile
+                MapTile.BL = Val("&H" + Left$(Text, 2))
+                MapTile.BR = Val("&H" + Mid$(Text, 4, 2))
+                ReDim _Preserve MapTiles(0 To UBound(MapTiles) + 1) As MapTile
+                MapTiles(UBound(MapTiles)) = MapTile
+                ParseState = 0
+            Else
+                ParseDie Text
+            End If
         Else
-            ParseDie Text
+            Die "Unknown parse state: " + Str$(ParseState)
         End If
     Loop
     Close File
 
-    If ParsingBottom Then
-        Die "Hit end of file while still parsing map tile" + Str$(I)
-    End If
-
-    NumMapTiles = I
+    If ParseState <> 0 Then ParseDie Text
 End Sub
 
 Sub SaveMap(Filename As String)
@@ -1504,6 +1705,15 @@ Function StateStr$(State As Long)
     If State = STATE_SHORT_JUMPING Then StateStr$ = "short jumping"
     If State = STATE_GONE Then StateStr$ = "gone"
     If State = STATE_ITEM Then StateStr$ = "item"
+End Function
+
+Function SolidityStr$(Solidity As Long)
+    If Solidity = NOT_SOLID Then SolidityStr$ = "not solid"
+    If Solidity = SOLID Then SolidityStr$ = "solid"
+    If Solidity = JUMP_UP Then SolidityStr$ = "jump up"
+    If Solidity = JUMP_DOWN Then SolidityStr$ = "jump down"
+    If Solidity = JUMP_LEFT Then SolidityStr$ = "jump left"
+    If Solidity = JUMP_RIGHT Then SolidityStr$ = "jump right"
 End Function
 
 Function ParseFacing(Char As String)
@@ -1610,6 +1820,7 @@ Sub LoadMap
     Close File
 
     SetCharacterStartFields PLAYER
+    ResetFocusOnPlayer
     LoadCharacterInfos
     LoadMapTiles
     RenderMapImage
@@ -1674,6 +1885,7 @@ Sub LoadLinkedMap(Facing As Long)
         Characters(PLAYER).X = MapWidth - 1
         Characters(PLAYER).Y = GetFirstNonSolidTileY(MapWidth - 1) + Offset
     End If
+    ResetFocusOnPlayer
 
     FadeIn
 End Sub
@@ -1864,14 +2076,6 @@ Function CanMoveTo( _
     End If
 End Function
 
-Function MapHasPokemonAt(X As Long, Y As Long)
-    If WithinMap(X, Y) Then
-        MapHasPokemonAt = True
-        Exit Function
-    End If
-    MapHasPokemonAt = MapTiles(Map(X, Y)).HasPokemon
-End Function
-
 Sub RenderMapTile(X As Long, Y As Long)
     ' Render one of the map's tiles onto the MapImage
     _Dest MapImage
@@ -1998,7 +2202,7 @@ Sub RenderMapTiles
 
     ' Draw all map tiles as a grid
     Dim X As Long, Y As Long, I As Long
-    For I = 0 To NumMapTiles - 1
+    For I = 0 To UBound(MapTiles)
         X = I Mod TileSelectorWidth
         Y = Int(I / TileSelectorWidth)
         RenderMapTileAt MapTiles(I), X, Y - SelectedY, _
@@ -2040,11 +2244,18 @@ Sub RenderTileset
     Width = 16 * TileWidth
     Height = 6 * TileHeight
 
+    _Dest ScreenImage
+
     _PutImage (X, Y), Tileset.Image, ScreenImage, _
         (Tileset.StartX, Tileset.StartY) - ( _
             Tileset.StartX + Width - 1, _
             Tileset.StartY + Height - 1 _
         )
+
+    RenderSelectionBox _
+        X + (SelectedTileNumber Mod TilesetWidth) * TileWidth, _
+        Y + Int(SelectedTileNumber / TilesetWidth) * TileHeight, _
+        TileWidth, TileHeight
 End Sub
 
 Sub CopyScreen
@@ -2056,20 +2267,8 @@ End Sub
 Sub HandleModeSwitching
 
     ' Map saving/loading
-    If KeyPressed(Asc("f")) Then
-        _Dest 0
-        Dim NewFilename As String
-        Print "Current map filename: " + MapFilename
-        Input "Change map filename: ", NewFilename
-        If NewFilename <> "" Then
-            MapFilename = NewFilename
-            FixMapFilename MapFilename
-        End If
-        ' The enter key was just pressed (because we used Input), so
-        ' make sure we don't immediately exit the map editor because
-        ' of that!..
-        PrevKeyCode = EnterCode
-    End If
+    If KeyPressed(Asc("f")) Then _
+        ChangeFilename MapFilename, "map", "maps"
     If KeyPressed(F5Code) Then
         SaveMap MapFilename
         ShowMessage "Map saved!"
@@ -2089,13 +2288,20 @@ Sub HandleModeSwitching
 
     If KeyPressed(Asc("m")) Then Mode = MAP_EDITOR_MODE
     If KeyPressed(Asc("t")) Then Mode = TILE_SELECTOR_MODE
+    If KeyPressed(Asc("y")) Then Mode = TILESET_EDITOR_MODE
     If KeyPressed(Asc("s")) Then Mode = MAP_SCROLL_MODE
     If KeyPressed(Asc("r")) Then Mode = MAP_RESIZE_MODE
     If KeyPressed(Asc("c")) Then
         Mode = CHARACTER_EDITOR_MODE
         SelectedCharacter = 0
     End If
-    If KeyPressed(EnterCode) Then Mode = GAME_MODE
+    If KeyPressed(EnterCode) Then
+        If Mode = MAP_EDITOR_MODE Then
+            Mode = GAME_MODE
+        Else
+            Mode = MAP_EDITOR_MODE
+        End IF
+    End If
 End Sub
 
 Sub HandleEditorArrowKeys
@@ -3088,12 +3294,16 @@ Sub RenderTalkingText
     RenderTalkBox Text
 End Sub
 
-Sub FixMapFilename(Filename As String)
+Sub FixFilename(Filename As String, Directory As String)
     ' NOTE: strings are pass-by-reference, so by modifying Filename here, we
     ' actually modify the string which was passed in!..
     If Filename = "" Then Exit Sub
-    If Instr(Filename, "/") = 0 Then Filename = "maps/" + Filename
+    If Instr(Filename, "/") = 0 Then Filename = Directory + "/" + Filename
     If Instr(Filename, ".") = 0 Then Filename = Filename + ".txt"
+End Sub
+
+Sub FixMapFilename(Filename As String)
+    FixFilename Filename, "maps"
 End Sub
 
 Function ScriptFindNextElseOrEnd(Script As Script, CommandNumber As Long)
@@ -3348,7 +3558,6 @@ Sub RenderGameScreen
     For I = 1 To UBound(Characters)
         HandleCharacterAnimation I
     Next
-    UpdateFocus
     RenderMap
     For I = 1 To UBound(Characters)
         RenderCharacter I
@@ -3679,6 +3888,14 @@ Sub ParseCharacterInfo(File As Long, CharacterName As String)
     CharacterInfos(I) = CharacterInfo
 End Sub
 
+Sub ResetFocusOnPlayer
+    FocusCharacter = PLAYER
+    FocusExtraX = Characters(FocusCharacter).X * MapTileWidth _
+        + Characters(FocusCharacter).ExtraX
+    FocusExtraY = Characters(FocusCharacter).Y * MapTileHeight _
+        + Characters(FocusCharacter).ExtraY
+End Sub
+
 Sub UpdateFocus
     ' Update global variables FocusExtraX, FocusExtraY
 
@@ -3700,6 +3917,5 @@ Sub UpdateFocus
             + Characters(FocusCharacter).ExtraX
         FocusExtraY = Characters(FocusCharacter).Y * MapTileHeight _
             + Characters(FocusCharacter).ExtraY
-        Exit Sub
     End If
 End Sub

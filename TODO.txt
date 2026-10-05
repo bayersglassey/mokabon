@@ -148,6 +148,7 @@
         Or do we want to have "init" scripts?.. that's probably nicer?..
         Or maybe we do both, because picking up items is a common case,
         and it's nice if it's easy to achieve...
+[X] Add tileset editor
 [ ] Implement pokemon battles
     [ ] First of all, you need your own pokemon...
     [ ] Patches of tall grass should have pokemon...
@@ -205,12 +206,22 @@
 [X] Fix JUMP_UP letting you jump onto solid stuff!
 [X] Remember which characters have STATE_GONE between map changes.
 [X] You can catch farfetch'd just by running into it?!..
+[X] In map editor, we need to update the focus to follow the "player"
 [ ] Split HandleCharacterAnimation into something which updates ExtraX,
     ExtraY, etc, and something which updates Frame, etc.
     The former should be used to update character's sprite for rendering,
     e.g. after we modify their Facing.
+[ ] Distinguish between IsHidden and IsInvisible.
+    In character editor, hidden characters should "flash" between exclamation
+    marks and whatever they really look like (so, nothing for invisibles)
 [ ] Don't let characters walk onto each other via loop scripts
 [ ] Arrow keys should all prevent each other from repeated keypresses?..
 [ ] Map editor: add ability to copy rectangular areas of the map around
 [ ] Implement SCRIPT_INIT (it exists, but currently does nothing)
 [ ] The ITEMS menu needs to scroll.
+[ ] The "old man trainer" needs to remember whether he's given you his
+    schpiel or not... basically, we need an "if gone PIKACHU".
+    And we want "init" scripts working, so we can use "on talk" inside
+    the "if gone PIKACHU".
+[ ] Rename JUMP_UP to JUMP_OFF_UP, then add a JUMP_UP which behaves like
+    JUMP_{LEFT,RIGHT,DOWN}, and possibly rename them all to JUMP_OVER_*.
